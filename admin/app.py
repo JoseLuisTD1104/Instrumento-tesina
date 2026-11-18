@@ -25,7 +25,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("corto.admin")
 
 MENSAJES = {
-    "credenciales": "Usuario o contraseña incorrectos.",
+    "credenciales": "Correo o contraseña incorrectos.",
+    "servicio": "No se pudo iniciar sesión en este momento. Intenta más tarde.",
     "bloqueado": "Demasiados intentos fallidos. Intenta de nuevo más tarde.",
     "solicitud": "La solicitud no es válida. Recarga la página e intenta de nuevo.",
 }
@@ -59,8 +60,8 @@ button{width:100%;margin-top:22px;padding:11px;border:0;border-radius:8px;backgr
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="{{ url_for('login') }}" autocomplete="on">
 <input type="hidden" name="csrf" value="{{ csrf }}">
-<label for="usuario">Usuario</label>
-<input id="usuario" name="usuario" autocomplete="username" maxlength="64" required autofocus>
+<label for="correo">Correo</label>
+<input id="correo" name="correo" type="email" autocomplete="username" maxlength="254" required autofocus>
 <label for="password">Contraseña</label>
 <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
 <button type="submit">Iniciar sesión</button></form>
@@ -133,10 +134,11 @@ def login_post():
         log.warning("login_csrf_invalido ip=%r", ip)
         return pagina_login("solicitud", 400)
 
-    resultado = auth.iniciar_sesion(request.form.get("usuario"), request.form.get("password"), ip)
+    resultado = auth.iniciar_sesion(request.form.get("correo"), request.form.get("password"), ip)
     if not resultado.ok:
         log.warning("login_fallido motivo=%s ip=%r", resultado.motivo, ip)
-        return pagina_login(resultado.motivo, 429 if resultado.motivo == "bloqueado" else 401)
+        estado = {"bloqueado": 429, "servicio": 503}.get(resultado.motivo, 401)
+        return pagina_login(resultado.motivo, estado)
 
     log.info("login_correcto ip=%r", ip)
     resp = redirect(url_for("panel"))
@@ -170,6 +172,7 @@ def logout():
 @app.errorhandler(405)
 @app.errorhandler(413)
 @app.errorhandler(500)
+@app.errorhandler(503)
 def error_generico(e):
     codigo = getattr(e, "code", 500)
     return "Error", codigo
