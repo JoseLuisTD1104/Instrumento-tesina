@@ -4,111 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>corto · Panel de administrador</title>
-<style>
-  :root {
-    --bg: #0f1013;
-    --surface: #1c1d22;
-    --surface-2: #24252b;
-    --border: #33343a;
-    --text: #f2f2f4;
-    --text-dim: #a6a7ad;
-    --accent: #ff3b5c;
-    --radius: 14px;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    min-height: 100vh;
-    min-width: 768px; /* solo modo escritorio: en pantallas más angostas se desplaza en vez de reacomodarse */
-    background: var(--bg);
-    color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  }
-
-  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-
-  /* ---------- Encabezado ---------- */
-  .topbar {
-    height: 64px;
-    display: flex; align-items: center; gap: 12px;
-    padding: 0 clamp(24px, 4vw, 48px);
-    border-bottom: 1px solid var(--border);
-  }
-  .logo { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; }
-  .logo span { color: var(--accent); }
-  .badge { font-size: 13px; color: var(--text-dim); padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
-
-  /* ---------- Contenedor ---------- */
-  .wrap {
-    width: 100%;
-    max-width: 1040px;
-    margin: 0 auto;
-    padding: 32px clamp(24px, 4vw, 48px) 48px;
-  }
-
-  /* ---------- Pestañas ---------- */
-  .tabs {
-    display: flex; gap: 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tab {
-    position: relative;
-    padding: 14px 20px;
-    min-height: 48px; /* tamaño cómodo también al tocar en tablet */
-    font-size: 15px; font-weight: 600;
-    color: var(--text-dim);
-    border-radius: 8px 8px 0 0;
-  }
-  .tab:hover { color: var(--text); background: var(--surface); }
-  .tab[aria-selected="true"] { color: var(--text); }
-  .tab[aria-selected="true"]::after {
-    content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px;
-    height: 3px; border-radius: 2px; background: var(--accent);
-  }
-
-  .panel { padding-top: 28px; }
-  .panel[hidden] { display: none; }
-
-  /* ---------- Área de arrastrar y soltar ---------- */
-  .card {
-    background: var(--surface);
-    border-radius: var(--radius);
-    padding: clamp(24px, 5vw, 56px);
-  }
-  .dropzone {
-    min-height: clamp(280px, 45vh, 420px);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 6px;
-    text-align: center;
-    border: 2px dashed var(--border);
-    border-radius: 12px;
-    padding: 32px;
-    cursor: pointer;
-    user-select: none;
-    touch-action: manipulation;
-    transition: border-color .15s, background .15s;
-  }
-  .dropzone:hover { border-color: #55565d; }
-  .dropzone.over { border-color: var(--accent); background: rgba(255, 59, 92, .06); }
-
-  .dropzone svg { width: 120px; height: 84px; margin-bottom: 14px; color: #6b6c73; }
-  .dropzone.over svg { color: var(--accent); }
-
-  .dz-title { font-size: clamp(22px, 2.4vw, 28px); font-weight: 700; color: var(--text-dim); line-height: 1.25; }
-  .dz-sub { font-size: 15px; color: #7c7d84; }
-  .dz-sub strong { color: var(--text); font-weight: 600; }
-  .dz-hint { margin-top: 14px; font-size: 13px; color: #6b6c73; }
-
-  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-</style>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src https://*.supabase.co; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="css/panel.css">
 </head>
-<body>
+<body class="verificando">
 
 <header class="topbar">
   <div class="logo">corto<span>.</span></div>
   <span class="badge">Panel de administrador</span>
+  <span class="spacer"></span>
+  <button class="btn-salir" type="button" id="cerrar-sesion">Cerrar sesión</button>
 </header>
 
 <main class="wrap">
@@ -139,42 +45,9 @@
   <section class="panel" id="panel-analiticas" role="tabpanel" aria-labelledby="tab-analiticas" tabindex="0" hidden></section>
 </main>
 
-<script>
-  // ---- Cambio de pestañas (incluye flechas del teclado) ----
-  const tabs = [...document.querySelectorAll('[role="tab"]')];
-
-  function activar(tab) {
-    tabs.forEach(t => {
-      const activa = t === tab;
-      t.setAttribute('aria-selected', activa);
-      t.tabIndex = activa ? 0 : -1;
-      document.getElementById(t.getAttribute('aria-controls')).hidden = !activa;
-    });
-    tab.focus();
-  }
-
-  tabs.forEach((tab, i) => {
-    tab.addEventListener('click', () => activar(tab));
-    tab.addEventListener('keydown', e => {
-      if (e.key === 'ArrowRight') activar(tabs[(i + 1) % tabs.length]);
-      if (e.key === 'ArrowLeft')  activar(tabs[(i - 1 + tabs.length) % tabs.length]);
-    });
-  });
-
-  // ---- Abrir el explorador de archivos (solo elegir, no sube nada) ----
-  const zona = document.getElementById('dropzone');
-  const selector = document.getElementById('selector');
-
-  zona.addEventListener('dblclick', () => selector.click());
-  zona.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selector.click(); }
-  });
-
-  // ---- Evitar que el navegador abra el video al soltarlo y salga del panel ----
-  ['dragenter', 'dragover'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach(ev => zona.addEventListener(ev, e => { e.preventDefault(); zona.classList.remove('over'); }));
-  window.addEventListener('dragover', e => e.preventDefault());
-  window.addEventListener('drop', e => e.preventDefault());
-</script>
+<script src="vendor/supabase-js-2.118.0.js"></script>
+<script src="config.js"></script>
+<script src="js/admin-login.js"></script>
+<script src="js/panel.js"></script>
 </body>
 </html>

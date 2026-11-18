@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>corto · admin</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src https://*.supabase.co; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="css/login.css">
+</head>
+<body class="verificando">
+<main class="card">
+  <div class="logo">corto<span>.</span></div>
+  <p class="sub">Panel de administrador</p>
+  <p class="error" id="error" role="alert" hidden></p>
+  <form id="form-login" autocomplete="on" novalidate>
+    <label for="correo">Correo</label>
+    <input id="correo" name="correo" type="email" autocomplete="username" maxlength="254" required autofocus>
+    <label for="password">Contraseña</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" maxlength="128" required>
+    <button type="submit">Iniciar sesión</button>
+  </form>
+</main>
+<script src="vendor/supabase-js-2.118.0.js"></script>
+<script src="config.js"></script>
+<script src="js/admin-login.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
