@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-5">
+<link rel="stylesheet" href="css/panel.css?v=20261119-6">
 </head>
 <body class="verificando">
 
@@ -21,6 +21,7 @@
   <div class="tabs" role="tablist" aria-label="Secciones del panel">
     <button class="tab" role="tab" id="tab-subir" aria-controls="panel-subir" aria-selected="true">Subir videos</button>
     <button class="tab" role="tab" id="tab-administrar" aria-controls="panel-administrar" aria-selected="false" tabindex="-1">Administrar videos</button>
+    <button class="tab" role="tab" id="tab-comentarios" aria-controls="panel-comentarios" aria-selected="false" tabindex="-1">Comentarios</button>
     <button class="tab" role="tab" id="tab-analiticas" aria-controls="panel-analiticas" aria-selected="false" tabindex="-1">Analíticas</button>
   </div>
 
@@ -106,6 +107,113 @@
           </dl>
           <p class="ayuda">El archivo de video no se puede reemplazar. Para cambiarlo, sube un video nuevo.</p>
         </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Comentarios ============ -->
+  <section class="panel" id="panel-comentarios" role="tabpanel" aria-labelledby="tab-comentarios" tabindex="0" hidden>
+    <div id="com-lista">
+      <div class="encabezado">
+        <div>
+          <h2>Comentarios y contadores</h2>
+          <p class="archivo" id="com-conteo"></p>
+        </div>
+        <button class="btn-sec" type="button" id="com-recargar">Recargar</button>
+      </div>
+      <p class="mensaje" id="com-mensaje-lista" role="status" hidden></p>
+      <div class="tabla">
+        <div class="fila fila-cabecera" aria-hidden="true">
+          <span>Video</span><span>Usuario</span><span>Subido</span><span>Estado</span><span>Acciones</span>
+        </div>
+        <div id="com-filas"></div>
+        <p class="vacio" id="com-vacio" hidden>Todavía no hay videos subidos.</p>
+      </div>
+    </div>
+
+    <div class="com-detalle" id="com-detalle" hidden>
+      <aside class="menu-lateral" aria-label="Opciones del video">
+        <button class="menu-volver" type="button" id="com-volver">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+          <span>Lista de videos</span>
+        </button>
+        <video class="menu-miniatura" id="com-miniatura" preload="metadata" muted playsinline tabindex="-1" aria-hidden="true"></video>
+        <p class="menu-etiqueta">Tu video</p>
+        <p class="menu-titulo" id="com-titulo"></p>
+        <nav class="menu-opciones">
+          <button class="menu-opcion" type="button" data-seccion-com="me_gusta">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg>
+            <span>Me gusta</span><span class="menu-num" data-num></span>
+          </button>
+          <button class="menu-opcion" type="button" data-seccion-com="comentarios">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg>
+            <span>Comentarios</span><span class="menu-num" data-num></span>
+          </button>
+          <button class="menu-opcion" type="button" data-seccion-com="guardados">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span>Guardados</span><span class="menu-num" data-num></span>
+          </button>
+        </nav>
+      </aside>
+
+      <div class="com-contenido">
+        <section data-panel-com="me_gusta">
+          <h2>Me gusta</h2>
+          <div id="com-contador-me-gusta"></div>
+        </section>
+
+        <section data-panel-com="comentarios" hidden>
+          <h2>Comentarios</h2>
+          <div id="com-contador-comentarios"></div>
+
+          <fieldset class="card card-form form-com" id="com-form">
+            <legend class="visually-hidden">Comentario</legend>
+            <h3 id="com-form-titulo">Añadir comentario</h3>
+            <div class="campo">
+              <label for="com-usuario">@usuario</label>
+              <div class="con-prefijo"><span aria-hidden="true">@</span><input id="com-usuario" type="text" maxlength="31" autocomplete="off" spellcheck="false"></div>
+              <div class="pie"><p class="ayuda">Letras sin acentos, números, punto y guion bajo.</p><span class="contador" id="com-usuario-contador"></span></div>
+              <p class="error-campo" id="com-error-usuario" role="alert"></p>
+            </div>
+            <div class="campo">
+              <label for="com-texto">Comentario</label>
+              <textarea id="com-texto" rows="3" maxlength="150"></textarea>
+              <div class="pie"><p class="ayuda"></p><span class="contador" id="com-texto-contador"></span></div>
+              <p class="error-campo" id="com-error-texto" role="alert"></p>
+            </div>
+            <div class="campo campo-imagen">
+              <span class="etiqueta">Foto de perfil (opcional)</span>
+              <div class="imagen-fila">
+                <div class="miniatura redonda"><img id="com-foto-vista" alt="Foto de perfil actual" hidden></div>
+                <div>
+                  <label class="btn-sec btn-archivo">Elegir imagen<input class="visually-hidden" type="file" id="com-foto" accept="image/png,image/jpeg,image/webp"></label>
+                  <button class="btn-link" type="button" id="com-foto-quitar" hidden>Quitar</button>
+                  <p class="ayuda" id="com-foto-estado"></p>
+                </div>
+              </div>
+              <p class="ayuda">PNG, JPEG o WebP · máximo 10 MB.</p>
+              <p class="error-campo" id="com-error-foto" role="alert"></p>
+            </div>
+            <p class="mensaje" id="com-mensaje-form" role="status" hidden></p>
+            <div class="acciones">
+              <button class="btn-sec" type="button" id="com-cancelar" hidden>Cancelar edición</button>
+              <button class="btn-pri" type="button" id="com-enviar">Añadir comentario</button>
+            </div>
+          </fieldset>
+
+          <div class="encabezado encabezado-com">
+            <h3>Comentarios del video</h3>
+            <p class="archivo" id="com-total-escritos"></p>
+          </div>
+          <p class="mensaje" id="com-mensaje-lista-comentarios" role="status" hidden></p>
+          <ul class="lista-com" id="com-comentarios"></ul>
+          <p class="vacio" id="com-sin-comentarios" hidden>Este video todavía no tiene comentarios escritos.</p>
+        </section>
+
+        <section data-panel-com="guardados" hidden>
+          <h2>Guardados</h2>
+          <div id="com-contador-guardados"></div>
+        </section>
       </div>
     </div>
   </section>
@@ -229,12 +337,58 @@
   </div>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-5"></script>
-<script src="config.js?v=20261119-5"></script>
-<script src="js/admin-login.js?v=20261119-5"></script>
-<script src="js/videos.js?v=20261119-5"></script>
-<script src="js/formulario-video.js?v=20261119-5"></script>
-<script src="js/pestanas-videos.js?v=20261119-5"></script>
-<script src="js/panel.js?v=20261119-5"></script>
+<template id="tpl-fila-com">
+  <div class="fila">
+    <div class="celda-video">
+      <video class="miniatura-video" data-miniatura preload="metadata" muted playsinline tabindex="-1" aria-hidden="true"></video>
+      <div class="textos">
+        <p class="titulo" data-titulo></p>
+        <p class="descripcion" data-descripcion></p>
+      </div>
+    </div>
+    <span data-usuario></span>
+    <span data-fecha></span>
+    <span class="estado-pub" data-estado-pub></span>
+    <div class="acciones-fila">
+      <button class="btn-pri" type="button" data-abrir>Abrir</button>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-contador">
+  <div class="card card-form editor-contador">
+    <label data-etiqueta></label>
+    <p class="ayuda" data-ayuda></p>
+    <div class="contador-fila">
+      <input type="number" min="0" step="1" inputmode="numeric" data-numero>
+      <button class="btn-pri" type="button" data-guardar>Guardar</button>
+    </div>
+    <p class="error-campo" data-error role="alert"></p>
+    <p class="mensaje" data-mensaje role="status" hidden></p>
+  </div>
+</template>
+
+<template id="tpl-comentario">
+  <li class="item-com">
+    <div data-avatar></div>
+    <div class="item-com-cuerpo">
+      <p class="item-com-cabecera"><strong data-usuario></strong> <span data-fecha></span></p>
+      <p class="item-com-texto" data-texto></p>
+    </div>
+    <div class="item-com-acciones">
+      <button class="btn-sec" type="button" data-editar>Editar</button>
+      <button class="btn-peligro" type="button" data-borrar>Borrar</button>
+    </div>
+  </li>
+</template>
+
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-6"></script>
+<script src="config.js?v=20261119-6"></script>
+<script src="js/admin-login.js?v=20261119-6"></script>
+<script src="js/videos.js?v=20261119-6"></script>
+<script src="js/formulario-video.js?v=20261119-6"></script>
+<script src="js/pestanas-videos.js?v=20261119-6"></script>
+<script src="js/pestana-comentarios.js?v=20261119-6"></script>
+<script src="js/panel.js?v=20261119-6"></script>
 </body>
 </html>

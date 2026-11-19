@@ -107,7 +107,7 @@ class ValidadorVideo {
 
 /** Acceso a la tabla public.videos y a los buckets "videos" e "imagenes". */
 class VideoRepositorio {
-  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado,publicado_en";
+  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado,publicado_en,me_gusta_num,comentarios_num,guardados_num";
   static SEGUNDOS_FIRMA = 600; // 10 minutos: miniaturas y vista previa del panel
   static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
 

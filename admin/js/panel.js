@@ -5,6 +5,7 @@ class PanelPage {
   #auth;
   #saliendo = false;
   #administrar = null;
+  #comentarios = null;
 
   constructor(auth) {
     this.#auth = auth;
@@ -20,8 +21,10 @@ class PanelPage {
     const subir = new PestanaSubir(repo, dialogos);
     this.#administrar = new PestanaAdministrar(repo, dialogos);
     subir.alSubir(() => this.#administrar.marcarDesactualizada());
+    this.#comentarios = new PestanaComentarios(repo, new ComentarioRepositorio(this.#auth.clienteSupabase(), repo), dialogos);
     subir.iniciar();
     this.#administrar.iniciar();
+    this.#comentarios.iniciar();
 
     document.body.classList.remove("verificando");
     this.#auth.alCerrarseSesion(() => { if (!this.#saliendo) window.location.replace("./"); });
@@ -46,6 +49,7 @@ class PanelPage {
       });
       tab.focus();
       if (tab.id === "tab-administrar") this.#administrar.mostrar();
+      if (tab.id === "tab-comentarios") this.#comentarios.mostrar();
     };
     tabs.forEach((tab, i) => {
       tab.addEventListener("click", () => activar(tab));

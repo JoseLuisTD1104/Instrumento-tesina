@@ -255,3 +255,79 @@ dialog .acciones { margin-top: 16px; }
   .fila { grid-template-columns: minmax(0, 1fr) 100px 84px 110px 128px; gap: 10px; padding: 12px 14px; }
   .detalles { grid-template-columns: minmax(0, 1fr) 220px; }
 }
+
+/* ---------- Pestaña Comentarios ---------- */
+.com-detalle { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
+
+/* Menú lateral estilo Studio: regreso, miniatura y título arriba; opciones abajo */
+.menu-lateral {
+  position: sticky; top: 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px; border-radius: var(--radius); background: var(--surface);
+}
+.menu-volver {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 6px; margin-bottom: 6px; border-radius: 8px;
+  font-size: 15px; font-weight: 600; text-align: left;
+}
+.menu-volver:hover { background: var(--surface-2); }
+.menu-volver svg, .menu-opcion svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.menu-miniatura {
+  width: 100%; aspect-ratio: 9 / 16; max-height: 300px; object-fit: cover;
+  border-radius: 10px; background: var(--surface-2); pointer-events: none;
+}
+.menu-etiqueta { margin-top: 8px; font-size: 13px; font-weight: 600; }
+.menu-titulo { font-size: 13px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 10px; }
+.menu-opciones { display: flex; flex-direction: column; gap: 2px; }
+.menu-opcion {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 44px; padding: 8px 12px; border-radius: 8px;
+  font-size: 14px; text-align: left; color: var(--text-dim);
+}
+.menu-opcion:hover { background: var(--surface-2); color: var(--text); }
+.menu-opcion.activa { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.menu-num { margin-left: auto; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-weight: 400; }
+
+.com-contenido { min-width: 0; }
+.com-contenido h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+.com-contenido h3 { font-size: 16px; font-weight: 700; }
+
+/* Editor de contador */
+.editor-contador { display: flex; flex-direction: column; gap: 6px; max-width: 460px; }
+.editor-contador label { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.contador-fila { display: flex; gap: 10px; margin-top: 6px; }
+.contador-fila input {
+  flex: 1; min-width: 0; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font: inherit; font-size: 16px; font-variant-numeric: tabular-nums;
+}
+.contador-fila input:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+.editor-contador .mensaje { margin: 8px 0 0; }
+
+/* Formulario y lista de comentarios */
+.form-com { border: 0; min-width: 0; margin-top: 20px; display: flex; flex-direction: column; gap: 16px; }
+.form-com:disabled { opacity: .7; }
+.form-com .mensaje { margin: 0; }
+.encabezado-com { margin: 28px 0 12px; align-items: baseline; }
+.lista-com { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.item-com {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: start;
+  padding: 14px 16px; border-radius: 12px; background: var(--surface);
+  border: 1px solid transparent;
+}
+.item-com.en-edicion { border-color: var(--accent); }
+.avatar-com {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--surface-2);
+  color: #fff; font-size: 14px; font-weight: 700; letter-spacing: .5px;
+}
+.avatar-com img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.item-com-cabecera { font-size: 13px; color: var(--text-dim); }
+.item-com-cabecera strong { color: var(--text); font-weight: 600; margin-right: 6px; }
+.item-com-texto { margin-top: 4px; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-line; }
+.item-com-acciones { display: flex; flex-direction: column; gap: 6px; }
+.item-com-acciones button { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+
+@media (max-width: 1000px) {
+  .com-detalle { grid-template-columns: 200px minmax(0, 1fr); gap: 16px; }
+}
