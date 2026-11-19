@@ -257,14 +257,20 @@ dialog .acciones { margin-top: 16px; }
 }
 
 /* ---------- Pestaña Comentarios ---------- */
-.com-detalle { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
+/* El detalle ocupa el alto visible: el encabezado y las pestañas no se mueven,
+   y el menú lateral y el contenido se desplazan cada uno por su cuenta. */
+.com-detalle {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: stretch;
+  height: calc(100vh - var(--com-arriba, 180px) - 48px); min-height: 380px;
+}
 
 /* Menú lateral estilo Studio: regreso, miniatura y título arriba; opciones abajo */
 .menu-lateral {
-  position: sticky; top: 16px;
+  max-height: 100%; overflow-y: auto; overscroll-behavior: contain; align-self: start;
   display: flex; flex-direction: column; gap: 6px;
   padding: 12px; border-radius: var(--radius); background: var(--surface);
 }
+.menu-lateral > * { flex-shrink: 0; } /* si no cabe, el menú se desplaza en vez de aplastar sus partes */
 .menu-volver {
   display: flex; align-items: center; gap: 12px;
   padding: 8px 6px; margin-bottom: 6px; border-radius: 8px;
@@ -273,7 +279,7 @@ dialog .acciones { margin-top: 16px; }
 .menu-volver:hover { background: var(--surface-2); }
 .menu-volver svg, .menu-opcion svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .menu-miniatura {
-  width: 100%; aspect-ratio: 9 / 16; max-height: 300px; object-fit: cover;
+  width: 100%; aspect-ratio: 9 / 16; max-height: clamp(110px, calc(100vh - 500px), 300px); object-fit: cover;
   border-radius: 10px; background: var(--surface-2); pointer-events: none;
 }
 .menu-etiqueta { margin-top: 8px; font-size: 13px; font-weight: 600; }
@@ -288,7 +294,7 @@ dialog .acciones { margin-top: 16px; }
 .menu-opcion.activa { background: var(--surface-2); color: var(--text); font-weight: 600; }
 .menu-num { margin-left: auto; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; font-weight: 400; }
 
-.com-contenido { min-width: 0; }
+.com-contenido { position: relative; min-width: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding-right: 8px; }
 .com-contenido h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
 .com-contenido h3 { font-size: 16px; font-weight: 700; }
 

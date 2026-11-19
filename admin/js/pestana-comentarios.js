@@ -250,6 +250,7 @@ class PestanaComentarios {
   #mensajeComentarios = document.getElementById("com-mensaje-lista-comentarios");
   #listaComentarios = document.getElementById("com-comentarios");
   #sinComentarios = document.getElementById("com-sin-comentarios");
+  #contenido = document.querySelector(".com-contenido");
 
   constructor(repo, comentariosRepo, dialogos) {
     this.#repo = repo;
@@ -282,6 +283,14 @@ class PestanaComentarios {
     };
 
     this.#conectarFormulario();
+    window.addEventListener("resize", () => this.#ajustarAlto());
+  }
+
+  /** Mide dónde empieza el detalle para que ocupe justo el alto visible bajo las pestañas. */
+  #ajustarAlto() {
+    if (this.#vistaDetalle.hidden) return;
+    const arriba = this.#vistaDetalle.getBoundingClientRect().top + window.scrollY;
+    this.#vistaDetalle.style.setProperty("--com-arriba", `${Math.round(arriba)}px`);
   }
 
   /** Se llama al entrar a la pestaña: recarga la lista para ver altas, ediciones y publicaciones recientes. */
@@ -348,6 +357,9 @@ class PestanaComentarios {
 
     this.#vistaLista.hidden = true;
     this.#vistaDetalle.hidden = false;
+    window.scrollTo(0, 0);
+    this.#ajustarAlto();
+    document.querySelector(".menu-lateral").scrollTop = 0;
     this.#elegirSeccion("me_gusta");
     this.#cargarComentarios();
   }
@@ -371,6 +383,7 @@ class PestanaComentarios {
       if (activa) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     document.querySelectorAll("[data-panel-com]").forEach((s) => { s.hidden = s.dataset.panelCom !== clave; });
+    this.#contenido.scrollTop = 0;
   }
 
   #reemplazarVideo(actualizado) {
