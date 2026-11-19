@@ -1,84 +1,78 @@
 "use strict";
 
 /**
- * Ventanas de 5 minutos alineadas al reloj (:00, :05, :10…). Se calculan sobre la hora Unix:
- * como todas las zonas horarias se desplazan en múltiplos de 15 minutos, también quedan
- * alineadas a la hora local.
- */
-class VentanaDeTiempo {
-  static DURACION_MS = 5 * 60_000;
-
-  constructor(indice) {
-    this.indice = indice;
-    this.inicio = indice * VentanaDeTiempo.DURACION_MS;
-    this.fin = this.inicio + VentanaDeTiempo.DURACION_MS;
-  }
-
-  static actual(ahora = Date.now()) {
-    return new VentanaDeTiempo(Math.floor(ahora / VentanaDeTiempo.DURACION_MS));
-  }
-
-  restanteMs(ahora = Date.now()) {
-    return Math.min(VentanaDeTiempo.DURACION_MS, Math.max(0, this.fin - ahora));
-  }
-}
-
-/**
- * Entrega el código de 6 dígitos de una ventana. En este paso lo genera en el navegador con
- * crypto.getRandomValues; en el siguiente se reemplaza por uno que lo pida a Supabase con el
- * mismo método codigoPara(ventana), sin tocar la pantalla.
- * Guarda el código de la ventana en sessionStorage para que recargar la página no lo cambie.
+ * Obtiene del servidor (Edge Function "codigo-actual") el código de acceso vigente, los segundos que
+ * le quedan según la hora del servidor y hasta cuándo está abierto el acceso. También abre y cierra
+ * el acceso. Usa el cliente de Supabase del panel, que manda el JWT del administrador.
  */
 class ProveedorDeCodigo {
-  static CLAVE = "corto_codigo_ventana";
-  static LIMITE = 4_294_000_000; // múltiplo de 1 000 000 menor que 2^32: evita el sesgo del módulo
+  static FUNCION = "codigo-actual";
 
-  async codigoPara(ventana) {
-    const guardado = this.#leerGuardado();
-    if (guardado?.indice === ventana.indice) return guardado.codigo;
-    const codigo = ProveedorDeCodigo.#aleatorio();
-    try {
-      window.sessionStorage.setItem(ProveedorDeCodigo.CLAVE, JSON.stringify({ indice: ventana.indice, codigo }));
-    } catch {
-      // Sin sessionStorage el código sigue sirviendo; solo cambiaría al recargar.
-    }
-    return codigo;
+  #cliente;
+
+  constructor(clienteSupabase) {
+    this.#cliente = clienteSupabase;
   }
 
-  static #aleatorio() {
-    const caja = new Uint32Array(1);
-    do {
-      crypto.getRandomValues(caja);
-    } while (caja[0] >= ProveedorDeCodigo.LIMITE);
-    return String(caja[0] % 1_000_000).padStart(6, "0");
-  }
+  obtener() { return this.#llamar("consultar"); }
 
-  #leerGuardado() {
+  abrirAcceso() { return this.#llamar("abrir"); }
+
+  cerrarAcceso() { return this.#llamar("cerrar"); }
+
+  /** { codigo, segundosRestantes, abiertoHasta (ms o null), desfaseMs (hora servidor − hora local) } */
+  async #llamar(accion) {
+    let respuesta;
     try {
-      const datos = JSON.parse(window.sessionStorage.getItem(ProveedorDeCodigo.CLAVE) ?? "null");
-      return Number.isInteger(datos?.indice) && /^\d{6}$/.test(datos?.codigo ?? "") ? datos : null;
+      respuesta = await this.#cliente.functions.invoke(ProveedorDeCodigo.FUNCION, { body: { accion } });
     } catch {
-      return null;
+      throw new ErrorPanel("No hay conexión con el servidor del código.");
     }
+    const { data, error } = respuesta;
+    if (error) {
+      const estado = error.context?.status;
+      throw new ErrorPanel(estado === 401
+        ? "El servidor no reconoce tu sesión de administrador. Vuelve a iniciar sesión."
+        : "No se pudo obtener el código del servidor.");
+    }
+    const codigo = data?.codigo;
+    const segundos = Number(data?.segundos_restantes);
+    const ahoraServidor = Date.parse(data?.ahora ?? "");
+    const abiertoHasta = data?.abierto_hasta == null ? null : Date.parse(data.abierto_hasta);
+    if (typeof codigo !== "string" || !/^\d{8}$/.test(codigo) || !(segundos >= 0 && segundos <= 300) ||
+        !Number.isFinite(ahoraServidor) || (abiertoHasta !== null && !Number.isFinite(abiertoHasta))) {
+      throw new ErrorPanel("El servidor devolvió una respuesta inesperada.");
+    }
+    return { codigo, segundosRestantes: segundos, abiertoHasta, desfaseMs: ahoraServidor - Date.now() };
   }
 }
 
-/** Pantalla de la pestaña Autenticación: código grande, círculo de tiempo, mm:ss y pantalla completa. */
+/** Pantalla de la pestaña Autenticación: código grande, círculo de tiempo, mm:ss, acceso y pantalla completa. */
 class PestanaAutenticacion {
+  static DURACION_VENTANA_MS = 5 * 60_000;
   static REFRESCO_MS = 250;
   static TRANSICION_MS = 350;
+  static REINTENTO_MS = 3000;
+  static PAUSA_TRAS_CAMBIO_MS = 400; // margen para pedir el siguiente código ya en la nueva ventana
 
   #proveedor;
-  #ventana = null;
-  #intervalo = null;
+  #codigo = null;
+  #finVentana = 0;          // performance.now() en que termina la ventana, según el servidor
+  #abiertoHasta = null;     // ms, en hora del servidor
+  #desfaseMs = 0;
   #pidiendo = false;
+  #siguienteIntento = 0;
+  #intervalo = null;
 
   #escenario = document.getElementById("auth-escenario");
-  #codigo = document.getElementById("auth-codigo");
+  #caja = document.getElementById("auth-codigo");
   #grupos = [document.getElementById("auth-grupo-1"), document.getElementById("auth-grupo-2")];
+  #leyenda = document.getElementById("auth-leyenda");
   #arco = document.getElementById("auth-arco");
   #tiempo = document.getElementById("auth-tiempo");
   #botonPantalla = document.getElementById("auth-pantalla-completa");
+  #interruptor = document.getElementById("auth-acceso");
+  #estadoAcceso = document.getElementById("auth-estado-acceso");
   #mensaje = document.getElementById("auth-mensaje");
   #longitudArco;
 
@@ -94,13 +88,17 @@ class PestanaAutenticacion {
       this.#botonPantalla.title = "Este navegador no permite pantalla completa.";
     }
     this.#botonPantalla.addEventListener("click", () => this.#entrarPantallaCompleta());
+    this.#interruptor.addEventListener("change", () => this.#cambiarAcceso());
+    this.#pintarAcceso();
   }
 
-  /** Al entrar a la pestaña: empieza a contar (solo mientras se ve, para no gastar recursos). */
+  /** Al entrar a la pestaña: pide el código y empieza a contar (solo mientras se ve). */
   mostrar() {
     if (this.#intervalo !== null) return;
-    this.#actualizar();
+    this.#siguienteIntento = 0;
+    this.#finVentana = 0;
     this.#intervalo = window.setInterval(() => this.#actualizar(), PestanaAutenticacion.REFRESCO_MS);
+    this.#actualizar();
   }
 
   ocultar() {
@@ -109,44 +107,85 @@ class PestanaAutenticacion {
     if (document.fullscreenElement === this.#escenario) document.exitFullscreen().catch(() => {});
   }
 
-  async #actualizar() {
-    const ahora = Date.now();
-    const ventana = VentanaDeTiempo.actual(ahora);
-    this.#pintarTiempo(ventana.restanteMs(ahora));
-    if (this.#ventana?.indice !== ventana.indice && !this.#pidiendo) await this.#cambiarCodigo(ventana);
+  #actualizar() {
+    const restante = Math.max(0, this.#finVentana - performance.now());
+    this.#pintarTiempo(restante);
+    this.#pintarAcceso();
+    if (restante === 0 && !this.#pidiendo && performance.now() >= this.#siguienteIntento) this.#pedirCodigo();
   }
 
-  async #cambiarCodigo(ventana) {
+  async #pedirCodigo() {
     this.#pidiendo = true;
-    const primero = this.#ventana === null;
     try {
-      const codigo = await this.#proveedor.codigoPara(ventana);
-      if (!/^\d{6}$/.test(codigo)) throw new Error("código inválido");
-      if (!primero) {
-        this.#codigo.classList.add("cambiando");
-        await new Promise((r) => window.setTimeout(r, PestanaAutenticacion.TRANSICION_MS));
-      }
-      this.#grupos[0].textContent = codigo.slice(0, 3);
-      this.#grupos[1].textContent = codigo.slice(3);
-      this.#codigo.setAttribute("aria-label", `Código ${codigo.slice(0, 3)} ${codigo.slice(3)}`);
-      this.#ventana = ventana;
+      this.#aplicar(await this.#proveedor.obtener());
       PanelFormato.mensaje(this.#mensaje, "");
-    } catch {
-      PanelFormato.mensaje(this.#mensaje, "No se pudo generar el código. Se intentará de nuevo en un momento.", "error");
+    } catch (e) {
+      PanelFormato.mensaje(this.#mensaje, PanelFormato.errorVisible(e, "No se pudo obtener el código."), "error");
+      this.#siguienteIntento = performance.now() + PestanaAutenticacion.REINTENTO_MS;
     } finally {
-      this.#codigo.classList.remove("cambiando");
       this.#pidiendo = false;
     }
   }
 
+  /** El tiempo restante sale del servidor (segundos_restantes), no del reloj de la PC. */
+  #aplicar({ codigo, segundosRestantes, abiertoHasta, desfaseMs }) {
+    this.#finVentana = performance.now() + segundosRestantes * 1000;
+    // Justo en el borde de la ventana, espera un instante antes de pedir el siguiente.
+    this.#siguienteIntento = this.#finVentana + PestanaAutenticacion.PAUSA_TRAS_CAMBIO_MS;
+    this.#abiertoHasta = abiertoHasta;
+    this.#desfaseMs = desfaseMs;
+    if (codigo !== this.#codigo) this.#mostrarCodigo(codigo);
+    this.#pintarTiempo(segundosRestantes * 1000);
+    this.#pintarAcceso();
+  }
+
+  async #mostrarCodigo(codigo) {
+    const primero = this.#codigo === null;
+    this.#codigo = codigo;
+    if (!primero) {
+      this.#caja.classList.add("cambiando");
+      await new Promise((r) => window.setTimeout(r, PestanaAutenticacion.TRANSICION_MS));
+    }
+    this.#grupos[0].textContent = codigo.slice(0, 4);
+    this.#grupos[1].textContent = codigo.slice(4);
+    this.#caja.setAttribute("aria-label", `Código ${codigo.slice(0, 4)} ${codigo.slice(4)}`);
+    this.#caja.classList.remove("cambiando");
+  }
+
   /** El círculo y el mm:ss salen del mismo valor, así bajan en sincronía. */
   #pintarTiempo(restanteMs) {
-    const fraccion = restanteMs / VentanaDeTiempo.DURACION_MS;
+    const fraccion = Math.min(1, restanteMs / PestanaAutenticacion.DURACION_VENTANA_MS);
     this.#arco.style.strokeDashoffset = String(this.#longitudArco * (1 - fraccion));
     const segundos = Math.ceil(restanteMs / 1000);
-    const mm = String(Math.floor(segundos / 60)).padStart(2, "0");
-    const ss = String(segundos % 60).padStart(2, "0");
-    this.#tiempo.textContent = `${mm}:${ss}`;
+    this.#tiempo.textContent = `${String(Math.floor(segundos / 60)).padStart(2, "0")}:${String(segundos % 60).padStart(2, "0")}`;
+  }
+
+  #accesoAbierto() {
+    return this.#abiertoHasta !== null && this.#abiertoHasta > Date.now() + this.#desfaseMs;
+  }
+
+  #pintarAcceso() {
+    const abierto = this.#accesoAbierto();
+    if (!this.#interruptor.disabled) this.#interruptor.checked = abierto;
+    this.#leyenda.hidden = abierto;
+    this.#escenario.classList.toggle("cerrado", !abierto);
+    this.#estadoAcceso.textContent = abierto
+      ? `Acceso abierto · se cierra solo a las ${new Date(this.#abiertoHasta - this.#desfaseMs).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}`
+      : "Acceso cerrado";
+  }
+
+  async #cambiarAcceso() {
+    const abrir = this.#interruptor.checked;
+    this.#interruptor.disabled = true;
+    try {
+      this.#aplicar(abrir ? await this.#proveedor.abrirAcceso() : await this.#proveedor.cerrarAcceso());
+      PanelFormato.mensaje(this.#mensaje, "");
+    } catch (e) {
+      PanelFormato.mensaje(this.#mensaje, PanelFormato.errorVisible(e, "No se pudo cambiar el acceso."), "error");
+    } finally {
+      this.#interruptor.disabled = false;
+      this.#pintarAcceso(); // si falló, el interruptor vuelve a su estado real
+    }
   }
 
   async #entrarPantallaCompleta() {

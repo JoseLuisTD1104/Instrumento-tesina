@@ -395,9 +395,10 @@ dialog .acciones { margin-top: 16px; }
 }
 /* Fuente monoespaciada; font-size 30vh deja la altura de los dígitos por encima del 20% de la pantalla */
 .auth-codigo {
-  display: flex; gap: 0.35em;
+  display: flex; gap: 0.3em;
   font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
-  font-size: 30vh; font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+  /* 8 dígitos: 30vh en pantallas anchas; en las más angostas se limita al ancho disponible */
+  font-size: min(30vh, calc((100vw - 48px) / 5.2)); font-weight: 700; line-height: 1; letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
   transition: opacity .35s ease, filter .35s ease, transform .35s ease;
 }
@@ -411,7 +412,15 @@ dialog .acciones { margin-top: 16px; }
   font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
   font-size: max(5vh, 28px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-dim);
 }
-.auth-acciones { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 8px; text-align: center; }
+.auth-acciones { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 8px; text-align: center; }
+.auth-acceso { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.auth-estado-acceso { font-size: 14px; color: var(--text-dim); }
+/* Acceso cerrado: el código se sigue viendo, atenuado y con la leyenda */
+.auth-leyenda {
+  padding: 6px 16px; border-radius: 999px; background: #3a1820; color: #ffb3c0;
+  font-size: max(2.4vh, 15px); font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.auth-escenario.cerrado .auth-codigo { opacity: .45; }
 
 /* Pantalla completa: solo el código, el círculo y el tiempo, sobre fondo oscuro */
 .auth-escenario:fullscreen { background: #000; gap: 5vh; padding: 0; }

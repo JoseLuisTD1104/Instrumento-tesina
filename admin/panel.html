@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-11">
+<link rel="stylesheet" href="css/panel.css?v=20261119-13">
 </head>
 <body class="verificando">
 
@@ -225,20 +225,29 @@
   <section class="panel panel-autenticacion" id="panel-autenticacion" role="tabpanel" aria-labelledby="tab-autenticacion" tabindex="0" hidden>
     <p class="mensaje" id="auth-mensaje" role="status" hidden></p>
     <div class="auth-escenario" id="auth-escenario">
+      <p class="auth-leyenda" id="auth-leyenda" hidden>Acceso cerrado</p>
       <p class="auth-codigo" id="auth-codigo" role="img" aria-label="Código">
-        <span id="auth-grupo-1">···</span><span id="auth-grupo-2">···</span>
+        <span id="auth-grupo-1">····</span><span id="auth-grupo-2">····</span>
       </p>
       <div class="auth-reloj">
         <svg class="auth-circulo" viewBox="0 0 100 100" aria-hidden="true">
           <circle class="auth-pista" cx="50" cy="50" r="44"/>
           <circle class="auth-arco" id="auth-arco" cx="50" cy="50" r="44"/>
         </svg>
-        <span class="auth-tiempo" id="auth-tiempo" aria-label="Tiempo restante">05:00</span>
+        <span class="auth-tiempo" id="auth-tiempo" aria-label="Tiempo restante">--:--</span>
       </div>
     </div>
     <div class="auth-acciones">
+      <div class="auth-acceso">
+        <label class="interruptor" for="auth-acceso">
+          <input type="checkbox" role="switch" id="auth-acceso">
+          <span class="pista" aria-hidden="true"></span>
+          <span>Acceso abierto / cerrado</span>
+        </label>
+        <span class="auth-estado-acceso" id="auth-estado-acceso" role="status"></span>
+      </div>
       <button class="btn-sec" type="button" id="auth-pantalla-completa">Pantalla completa</button>
-      <p class="ayuda">Esc para salir de la pantalla completa. Mientras esta pestaña está abierta, la sesión no se cierra por inactividad.</p>
+      <p class="ayuda">El código y el tiempo vienen del servidor. Esc para salir de la pantalla completa. Mientras esta pestaña está abierta, la sesión no se cierra por inactividad.</p>
     </div>
   </section>
 </main>
@@ -457,15 +466,15 @@
   </li>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-11"></script>
-<script src="config.js?v=20261119-11"></script>
-<script src="js/admin-login.js?v=20261119-11"></script>
-<script src="js/sesion-segura.js?v=20261119-11"></script>
-<script src="js/videos.js?v=20261119-11"></script>
-<script src="js/formulario-video.js?v=20261119-11"></script>
-<script src="js/pestanas-videos.js?v=20261119-11"></script>
-<script src="js/pestana-comentarios.js?v=20261119-11"></script>
-<script src="js/pestana-autenticacion.js?v=20261119-11"></script>
-<script src="js/panel.js?v=20261119-11"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-13"></script>
+<script src="config.js?v=20261119-13"></script>
+<script src="js/admin-login.js?v=20261119-13"></script>
+<script src="js/sesion-segura.js?v=20261119-13"></script>
+<script src="js/videos.js?v=20261119-13"></script>
+<script src="js/formulario-video.js?v=20261119-13"></script>
+<script src="js/pestanas-videos.js?v=20261119-13"></script>
+<script src="js/pestana-comentarios.js?v=20261119-13"></script>
+<script src="js/pestana-autenticacion.js?v=20261119-13"></script>
+<script src="js/panel.js?v=20261119-13"></script>
 </body>
 </html>

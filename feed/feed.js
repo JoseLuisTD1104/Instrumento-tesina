@@ -1,59 +1,168 @@
 "use strict";
 
 /**
- * Feed público de "corto". Solo muestra videos publicados, en cola por publicado_en.
- * Los videos están en un bucket privado: cada uno se pide a la Edge Function "video-firmado",
- * que devuelve una URL firmada de pocos minutos. Todo texto se pinta con textContent.
+ * Feed de "corto". Solo se entra con el código de acceso que se proyecta en el salón: la Edge
+ * Function "validar-codigo" entrega un pase (JWT de 3 h) que se guarda en sessionStorage y se manda
+ * en Authorization a "feed-videos" y "video-firmado". Sin pase válido no se carga nada del feed.
+ * Todo texto se pinta con textContent. No se guarda ninguna interacción del participante.
  */
 
-class FeedRepositorio {
-  static COLUMNAS = "id,descripcion,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado_en,enlace_activo,enlace_texto,enlace_url,enlace_color";
-  static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
+/** El servidor rechazó el pase (401): hay que volver a la pantalla de acceso. */
+class ErrorSinPase extends Error {}
 
-  #sb;
+/** Guarda el pase en sessionStorage: se pierde al cerrar la pestaña. */
+class AlmacenDePase {
+  static CLAVE = "corto_pase";
+  static PATRON = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+  /** El pase guardado, o null si no hay o ya venció (el servidor es quien decide si es válido). */
+  leer() {
+    try {
+      const pase = window.sessionStorage.getItem(AlmacenDePase.CLAVE);
+      if (!pase || !AlmacenDePase.PATRON.test(pase)) return null;
+      const datos = JSON.parse(atob(pase.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+      if (!Number.isInteger(datos?.exp) || datos.exp * 1000 <= Date.now()) {
+        this.borrar();
+        return null;
+      }
+      return pase;
+    } catch {
+      this.borrar();
+      return null;
+    }
+  }
+
+  guardar(pase) {
+    if (!AlmacenDePase.PATRON.test(pase ?? "")) throw new Error("pase");
+    window.sessionStorage.setItem(AlmacenDePase.CLAVE, pase);
+  }
+
+  borrar() {
+    try { window.sessionStorage.removeItem(AlmacenDePase.CLAVE); } catch { /* sin almacenamiento */ }
+  }
+}
+
+/** Llamadas a las Edge Functions del proyecto. */
+class ClienteFunciones {
   #origen;
   #clave;
 
-  constructor(config, libreria) {
+  constructor(config) {
     this.#origen = new URL(config.SUPABASE_URL).origin;
     this.#clave = config.SUPABASE_PUBLISHABLE_KEY;
-    // Sin sesión: el feed es anónimo y no guarda nada en el navegador.
-    this.#sb = libreria.createClient(this.#origen, this.#clave, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    });
   }
 
-  /** Solo publicados, del más antiguo al más reciente: cada video nuevo queda al final. */
+  get origen() { return this.#origen; }
+
+  /** Devuelve el JSON de la respuesta; 401 → ErrorSinPase; cualquier otro error → Error. */
+  async llamar(funcion, { metodo = "POST", cuerpo, pase } = {}) {
+    const cabeceras = { apikey: this.#clave };
+    if (cuerpo !== undefined) cabeceras["Content-Type"] = "application/json";
+    if (pase) cabeceras.Authorization = `Bearer ${pase}`;
+    const r = await fetch(`${this.#origen}/functions/v1/${funcion}`, {
+      method: metodo,
+      headers: cabeceras,
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+    });
+    if (r.status === 401) throw new ErrorSinPase();
+    if (!r.ok) throw new Error("servicio");
+    return r.json();
+  }
+}
+
+/** Datos del feed, siempre con el pase. */
+class FeedRepositorio {
+  static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
+
+  #funciones;
+  #pase;
+
+  constructor(funciones, pase) {
+    this.#funciones = funciones;
+    this.#pase = pase;
+  }
+
+  /** Solo publicados, del más antiguo al más reciente (lo resuelve "feed-videos"). */
   async listarPublicados() {
-    const { data, error } = await this.#sb.from("videos").select(FeedRepositorio.COLUMNAS)
-      .eq("publicado", true)
-      .order("publicado_en", { ascending: true })
-      .order("id", { ascending: true });
-    if (error) throw new Error("lista");
-    return data ?? [];
+    const datos = await this.#funciones.llamar("feed-videos", { metodo: "GET", pase: this.#pase });
+    if (!Array.isArray(datos)) throw new Error("lista");
+    return datos;
   }
 
   urlImagen(ruta) {
     if (!ruta || !FeedRepositorio.RUTA_IMAGEN.test(ruta)) return null;
-    return `${this.#origen}/storage/v1/object/public/imagenes/${ruta}`;
+    return `${this.#funciones.origen}/storage/v1/object/public/imagenes/${ruta}`;
   }
 
-  /** { url, venceEn } con la URL firmada que entrega la Edge Function. */
+  /** { url, venceEn } con la URL firmada que entrega "video-firmado". */
   async urlVideo(id) {
-    const r = await fetch(`${this.#origen}/functions/v1/video-firmado`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: this.#clave },
-      body: JSON.stringify({ id }),
-      cache: "no-store",
-      referrerPolicy: "no-referrer",
-    });
-    if (!r.ok) throw new Error("firma");
-    const datos = await r.json();
-    if (typeof datos?.url !== "string" || !datos.url.startsWith(`${this.#origen}/storage/v1/object/sign/videos/`)) {
+    const datos = await this.#funciones.llamar("video-firmado", { cuerpo: { id }, pase: this.#pase });
+    if (typeof datos?.url !== "string" || !datos.url.startsWith(`${this.#funciones.origen}/storage/v1/object/sign/videos/`)) {
       throw new Error("firma");
     }
     const segundos = Number(datos.expira_en) > 0 ? Number(datos.expira_en) : 60;
     return { url: datos.url, venceEn: Date.now() + segundos * 1000 };
+  }
+}
+
+/** Pantalla de acceso: pide el código de 8 dígitos y obtiene el pase. */
+class PantallaDeAcceso {
+  static MENSAJE = "Código no válido";
+
+  #funciones;
+  #seccion = document.getElementById("acceso");
+  #form = document.getElementById("form-acceso");
+  #campo = document.getElementById("codigo-acceso");
+  #boton = document.getElementById("acceso-enviar");
+  #error = document.getElementById("acceso-error");
+  #alObtenerPase = () => {};
+  #enviando = false;
+
+  constructor(funciones) {
+    this.#funciones = funciones;
+  }
+
+  mostrar(alObtenerPase) {
+    this.#alObtenerPase = alObtenerPase;
+    this.#seccion.hidden = false;
+    this.#form.addEventListener("submit", (e) => { e.preventDefault(); this.#enviar(); });
+    this.#campo.addEventListener("input", () => { this.#mostrarError(""); });
+    this.#campo.focus();
+  }
+
+  /** Acepta pegar con espacios: se quitan todos antes de validar. */
+  static normalizar(texto) {
+    return String(texto ?? "").replace(/\s+/g, "");
+  }
+
+  async #enviar() {
+    if (this.#enviando) return;
+    const codigo = PantallaDeAcceso.normalizar(this.#campo.value);
+    if (!/^\d{8}$/.test(codigo)) {
+      this.#mostrarError(PantallaDeAcceso.MENSAJE);
+      return;
+    }
+    this.#enviando = true;
+    this.#boton.disabled = true;
+    this.#mostrarError("");
+    try {
+      const datos = await this.#funciones.llamar("validar-codigo", { cuerpo: { codigo } });
+      this.#alObtenerPase(datos?.pase);
+    } catch {
+      this.#mostrarError(PantallaDeAcceso.MENSAJE);
+      this.#campo.select();
+    } finally {
+      this.#enviando = false;
+      this.#boton.disabled = false;
+    }
+  }
+
+  #mostrarError(texto) {
+    this.#error.textContent = texto;
+    this.#error.hidden = !texto;
   }
 }
 
@@ -326,8 +435,9 @@ class VideoDelFeed {
           this.#video.addEventListener("loadedmetadata", () => { this.#video.currentTime = segundo; }, { once: true });
         }
         this.#aviso.hidden = true;
-      } catch {
+      } catch (e) {
         this.#firma = null;
+        if (e instanceof ErrorSinPase) { this.#feed.perderPase(); return; }
         if (mostrarAviso) this.#mostrarAviso("Este video no está disponible en este momento.");
       } finally {
         this.#pidiendo = null;
@@ -362,6 +472,7 @@ class VideoDelFeed {
 /** Página del feed: arma la cola, activa el video visible y maneja la navegación. */
 class FeedPagina {
   #repo;
+  #alPerderPase;
   #contenedor = document.getElementById("feed");
   #estado = document.getElementById("feed-estado");
   #anterior = document.getElementById("nav-anterior");
@@ -370,8 +481,15 @@ class FeedPagina {
   #indice = -1;
   #conSonido = false;
 
-  constructor(repo) {
+  constructor(repo, alPerderPase) {
     this.#repo = repo;
+    this.#alPerderPase = alPerderPase;
+  }
+
+  /** El servidor rechazó el pase (vencido o alterado): se detiene todo y se vuelve al acceso. */
+  perderPase() {
+    this.#videos.forEach((v) => v.desactivar());
+    this.#alPerderPase();
   }
 
   async iniciar() {
@@ -382,7 +500,8 @@ class FeedPagina {
     let filas;
     try {
       filas = await this.#repo.listarPublicados();
-    } catch {
+    } catch (e) {
+      if (e instanceof ErrorSinPase) { this.perderPase(); return; }
       this.#mostrarEstado("No se pudieron cargar los videos. Recarga la página.");
       return;
     }
@@ -451,14 +570,50 @@ class FeedPagina {
   }
 }
 
+/** Arranque: sin pase solo existe la pantalla de acceso; con pase, el feed. */
+class AppFeed {
+  #funciones;
+  #almacen = new AlmacenDePase();
+
+  constructor(config) {
+    this.#funciones = new ClienteFunciones(config);
+  }
+
+  iniciar() {
+    const pase = this.#almacen.leer();
+    if (pase) this.#mostrarFeed(pase);
+    else new PantallaDeAcceso(this.#funciones).mostrar((nuevo) => this.#entrar(nuevo));
+  }
+
+  #entrar(pase) {
+    this.#almacen.guardar(pase);
+    document.getElementById("acceso").hidden = true;
+    this.#mostrarFeed(pase);
+  }
+
+  #mostrarFeed(pase) {
+    for (const id of ["cabecera", "nav", "feed"]) document.getElementById(id).hidden = false;
+    const repo = new FeedRepositorio(this.#funciones, pase);
+    new FeedPagina(repo, () => this.#perderPase()).iniciar();
+  }
+
+  /** Pase vencido o rechazado: se borra y se recarga en la pantalla de acceso. */
+  #perderPase() {
+    this.#almacen.borrar();
+    window.location.replace(window.location.pathname);
+  }
+}
+
 (() => {
   if (window.top !== window.self) { document.documentElement.textContent = ""; return; }
-  const estado = document.getElementById("feed-estado");
   try {
     const config = window.CORTO_CONFIG;
-    if (!config?.SUPABASE_URL || !window.supabase?.createClient) throw new Error("config");
-    new FeedPagina(new FeedRepositorio(config, window.supabase)).iniciar();
+    if (!config?.SUPABASE_URL || !config?.SUPABASE_PUBLISHABLE_KEY) throw new Error("config");
+    new AppFeed(config).iniciar();
   } catch {
-    estado.textContent = "No se pudo cargar el feed. Recarga la página.";
+    const error = document.getElementById("acceso-error");
+    document.getElementById("acceso").hidden = false;
+    error.textContent = "No se pudo cargar la página. Recarga e intenta de nuevo.";
+    error.hidden = false;
   }
 })();

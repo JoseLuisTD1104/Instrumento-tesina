@@ -30,7 +30,7 @@ class PanelPage {
     subir.iniciar();
     this.#administrar.iniciar();
     this.#comentarios.iniciar();
-    this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo());
+    this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo(this.#auth.clienteSupabase()));
     this.#autenticacion.iniciar();
 
     document.body.classList.remove("verificando");
