@@ -18,18 +18,19 @@ class LoginPage {
   }
 
   async iniciar() {
-    if (await this.#auth.haySesionValida()) {
+    const estado = await this.#auth.verificarSesion();
+    if (estado === AdminLogin.ESTADOS_SESION.VALIDA) {
       window.location.replace("panel.html");
       return;
     }
-    this.#mostrarMotivoDeCierre();
+    this.#mostrarMotivoDeCierre(estado === AdminLogin.ESTADOS_SESION.RECHAZADA ? "seguridad" : null);
     document.body.classList.remove("verificando");
     this.#form.addEventListener("submit", (e) => this.#enviar(e));
   }
 
-  /** Muestra por qué se cerró la sesión (?motivo=seguridad) y limpia la URL. */
-  #mostrarMotivoDeCierre() {
-    const motivo = new URLSearchParams(window.location.search).get("motivo");
+  /** Muestra por qué se cerró la sesión (?motivo=seguridad o una sesión rechazada aquí) y limpia la URL. */
+  #mostrarMotivoDeCierre(motivoLocal) {
+    const motivo = motivoLocal ?? new URLSearchParams(window.location.search).get("motivo");
     const texto = LoginPage.MENSAJES_CIERRE[motivo];
     if (!texto) return;
     const aviso = document.getElementById("aviso");

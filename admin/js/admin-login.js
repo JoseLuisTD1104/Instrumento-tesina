@@ -125,23 +125,52 @@ class AdminLogin {
     }
   }
 
-  /** Verifica la sesión con el servidor de Supabase, no solo con lo guardado en el navegador. */
-  async haySesionValida() {
+  static ESTADOS_SESION = Object.freeze({ VALIDA: "valida", SIN_SESION: "sin_sesion", RECHAZADA: "rechazada" });
+
+  /**
+   * Verifica la sesión con el servidor de Supabase, no solo con lo guardado en el navegador.
+   * Devuelve "valida", "sin_sesion" (nunca hubo) o "rechazada" (había una y se cerró por seguridad).
+   */
+  async verificarSesion() {
+    const { VALIDA, SIN_SESION, RECHAZADA } = AdminLogin.ESTADOS_SESION;
     try {
       const { data: s, error: errorSesion } = await this.#cliente.auth.getSession();
-      if (errorSesion || !s?.session) return false;
-      if (this.sesionExcedioTope()) {
-        await this.cerrarSesion();
-        return false;
+      if (errorSesion) {
+        await this.#cliente.auth.signOut({ scope: "local" }).catch(() => {});
+        return RECHAZADA;
       }
+      if (!s?.session) return SIN_SESION;
+
       const { data, error } = await this.#cliente.auth.getUser();
       if (error || !data?.user) {
-        await this.#cliente.auth.signOut({ scope: "local" });
-        return false;
+        await this.#cliente.auth.signOut({ scope: "local" }).catch(() => {});
+        return RECHAZADA;
       }
-      return true;
+      this.#asegurarInicio(data.user);
+      if (this.sesionExcedioTope()) {
+        await this.cerrarSesion();
+        return RECHAZADA;
+      }
+      return VALIDA;
     } catch {
-      return false;
+      return RECHAZADA;
+    }
+  }
+
+  async haySesionValida() {
+    return (await this.verificarSesion()) === AdminLogin.ESTADOS_SESION.VALIDA;
+  }
+
+  /**
+   * Si falta la hora de inicio en sessionStorage (p. ej., una página vieja en caché hizo el login),
+   * se toma la del servidor: last_sign_in_at del usuario. Así una sesión recién iniciada nunca se
+   * rechaza y borrar la clave del navegador no evita el tope de 4 horas.
+   */
+  #asegurarInicio(usuario) {
+    if (this.inicioDeSesion() !== null) return;
+    const delServidor = Date.parse(usuario?.last_sign_in_at ?? "");
+    if (Number.isFinite(delServidor) && delServidor > 0) {
+      window.sessionStorage.setItem(AdminLogin.CLAVE_INICIO, String(Math.min(delServidor, Date.now())));
     }
   }
 

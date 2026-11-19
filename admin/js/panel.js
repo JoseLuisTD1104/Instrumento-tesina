@@ -12,8 +12,10 @@ class PanelPage {
   }
 
   async iniciar() {
-    if (!(await this.#auth.haySesionValida())) {
-      window.location.replace("./");
+    const estado = await this.#auth.verificarSesion();
+    if (estado !== AdminLogin.ESTADOS_SESION.VALIDA) {
+      // Si había una sesión y se rechazó, siempre con el mensaje de seguridad; si nunca hubo, al login sin más.
+      window.location.replace(estado === AdminLogin.ESTADOS_SESION.RECHAZADA ? GuardiaDeSesion.DESTINO_CIERRE : "./");
       return;
     }
     const subidas = new MonitorDeSubidas();
