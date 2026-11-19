@@ -3,6 +3,7 @@
 /** Pantalla de inicio de sesión. */
 class LoginPage {
   static ESPERA_TRAS_FALLO_MS = 2000; // solo frena clics repetidos; el límite real lo aplica Supabase
+  static MENSAJES_CIERRE = Object.freeze({ seguridad: "Tu sesión se cerró por seguridad" });
 
   #auth;
   #form;
@@ -21,8 +22,20 @@ class LoginPage {
       window.location.replace("panel.html");
       return;
     }
+    this.#mostrarMotivoDeCierre();
     document.body.classList.remove("verificando");
     this.#form.addEventListener("submit", (e) => this.#enviar(e));
+  }
+
+  /** Muestra por qué se cerró la sesión (?motivo=seguridad) y limpia la URL. */
+  #mostrarMotivoDeCierre() {
+    const motivo = new URLSearchParams(window.location.search).get("motivo");
+    const texto = LoginPage.MENSAJES_CIERRE[motivo];
+    if (!texto) return;
+    const aviso = document.getElementById("aviso");
+    aviso.textContent = texto;
+    aviso.hidden = false;
+    window.history.replaceState(null, "", window.location.pathname);
   }
 
   async #enviar(e) {

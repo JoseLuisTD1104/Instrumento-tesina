@@ -114,11 +114,14 @@ class VideoRepositorio {
   #sb;
   #origen;
   #clave;
+  #subidas;
 
-  constructor(cliente, config) {
+  /** subidas: MonitorDeSubidas opcional; mientras haya una subida en curso no cuenta la inactividad. */
+  constructor(cliente, config, subidas = null) {
     this.#sb = cliente;
     this.#origen = new URL(config.SUPABASE_URL).origin;
     this.#clave = config.SUPABASE_PUBLISHABLE_KEY;
+    this.#subidas = subidas;
   }
 
   async listar() {
@@ -227,7 +230,13 @@ class VideoRepositorio {
 
   /** Sube con XMLHttpRequest para poder informar el progreso (supabase-js no lo da). */
   async subirArchivo(bucket, ruta, archivo, alProgreso = () => {}) {
-    const { data } = await this.#sb.auth.getSession();
+    const tarea = () => this.#subirConProgreso(bucket, ruta, archivo, alProgreso);
+    return this.#subidas ? this.#subidas.envolver(tarea) : tarea();
+  }
+
+  async #subirConProgreso(bucket, ruta, archivo, alProgreso) {
+    const { data, error: errorSesion } = await this.#sb.auth.getSession();
+    if (errorSesion) throw new ErrorPanel("No se pudo comprobar tu sesión. Vuelve a iniciar sesión.");
     const token = data?.session?.access_token;
     if (!token) throw new ErrorPanel("Tu sesión terminó. Vuelve a iniciar sesión.");
 

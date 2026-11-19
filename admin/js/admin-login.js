@@ -10,6 +10,9 @@ class ConfiguracionInvalida extends Error {}
 class AdminLogin {
   static MAX_CORREO = 254;
   static MAX_PASSWORD = 128;
+  static DURACION_MAXIMA_MS = 4 * 60 * 60_000; // tope de la sesión, aunque haya actividad
+  static CLAVE_INICIO = "corto_inicio_sesion";
+  static PATRON_SESION_SUPABASE = /^sb-.+-auth-token/;
 
   static MENSAJES = Object.freeze({
     credenciales: "Correo o contraseña incorrectos.",
@@ -65,7 +68,35 @@ class AdminLogin {
   }
 
   static desdeConfig() {
+    AdminLogin.limpiarSesionesLocales();
     return new AdminLogin(window.CORTO_CONFIG, window.supabase);
+  }
+
+  /** Borra de localStorage cualquier sesión vieja de Supabase (sb-…-auth-token). */
+  static limpiarSesionesLocales() {
+    try {
+      const claves = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const clave = window.localStorage.key(i);
+        if (clave && AdminLogin.PATRON_SESION_SUPABASE.test(clave)) claves.push(clave);
+      }
+      claves.forEach((clave) => window.localStorage.removeItem(clave));
+    } catch {
+      // Sin acceso a localStorage tampoco puede haber sesiones guardadas ahí.
+    }
+  }
+
+  /** Hora (ms) en que inició la sesión, guardada en sessionStorage; null si no hay. */
+  inicioDeSesion() {
+    const valor = Number.parseInt(window.sessionStorage.getItem(AdminLogin.CLAVE_INICIO) ?? "", 10);
+    return Number.isSafeInteger(valor) && valor > 0 ? valor : null;
+  }
+
+  /** true si no hay hora de inicio válida o ya pasaron 4 horas desde ella. */
+  sesionExcedioTope(ahora = Date.now()) {
+    const inicio = this.inicioDeSesion();
+    if (inicio === null || inicio > ahora + 60_000) return true; // ausente o en el futuro: no es confiable
+    return ahora - inicio >= AdminLogin.DURACION_MAXIMA_MS;
   }
 
   /** Devuelve { ok: true } o { ok: false, motivo, mensaje } sin decir qué dato falló. */
@@ -86,7 +117,9 @@ class AdminLogin {
         if (!error.status || error.status >= 500) return this.#fallo("servicio");
         return this.#fallo("credenciales");
       }
-      return data?.session ? { ok: true } : this.#fallo("credenciales");
+      if (!data?.session) return this.#fallo("credenciales");
+      window.sessionStorage.setItem(AdminLogin.CLAVE_INICIO, String(Date.now()));
+      return { ok: true };
     } catch {
       return this.#fallo("servicio");
     }
@@ -95,8 +128,12 @@ class AdminLogin {
   /** Verifica la sesión con el servidor de Supabase, no solo con lo guardado en el navegador. */
   async haySesionValida() {
     try {
-      const { data: s } = await this.#cliente.auth.getSession();
-      if (!s?.session) return false;
+      const { data: s, error: errorSesion } = await this.#cliente.auth.getSession();
+      if (errorSesion || !s?.session) return false;
+      if (this.sesionExcedioTope()) {
+        await this.cerrarSesion();
+        return false;
+      }
       const { data, error } = await this.#cliente.auth.getUser();
       if (error || !data?.user) {
         await this.#cliente.auth.signOut({ scope: "local" });
@@ -117,6 +154,7 @@ class AdminLogin {
       await this.#cliente.auth.signOut({ scope: "local" }).catch(() => {});
     } finally {
       window.sessionStorage.clear();
+      AdminLogin.limpiarSesionesLocales();
     }
   }
 

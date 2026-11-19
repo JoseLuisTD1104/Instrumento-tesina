@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-7">
+<link rel="stylesheet" href="css/panel.css?v=20261119-8">
 </head>
 <body class="verificando">
 
@@ -244,6 +244,14 @@
   </form>
 </dialog>
 
+<dialog id="dialogo-sesion" class="dialogo-sesion" aria-labelledby="dialogo-sesion-titulo" aria-describedby="dialogo-sesion-texto">
+  <h2 id="dialogo-sesion-titulo">Tu sesión se cerrará en 1 minuto</h2>
+  <p id="dialogo-sesion-texto" class="ayuda">No hay actividad en el panel. Por seguridad, la sesión se cierra tras 15 minutos sin uso.</p>
+  <div class="acciones">
+    <button class="btn-pri" type="button" data-seguir>Seguir conectado</button>
+  </div>
+</dialog>
+
 <!-- ============ Plantillas ============ -->
 <template id="tpl-formulario">
   <fieldset class="form-video">
@@ -382,13 +390,14 @@
   </li>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-7"></script>
-<script src="config.js?v=20261119-7"></script>
-<script src="js/admin-login.js?v=20261119-7"></script>
-<script src="js/videos.js?v=20261119-7"></script>
-<script src="js/formulario-video.js?v=20261119-7"></script>
-<script src="js/pestanas-videos.js?v=20261119-7"></script>
-<script src="js/pestana-comentarios.js?v=20261119-7"></script>
-<script src="js/panel.js?v=20261119-7"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-8"></script>
+<script src="config.js?v=20261119-8"></script>
+<script src="js/admin-login.js?v=20261119-8"></script>
+<script src="js/sesion-segura.js?v=20261119-8"></script>
+<script src="js/videos.js?v=20261119-8"></script>
+<script src="js/formulario-video.js?v=20261119-8"></script>
+<script src="js/pestanas-videos.js?v=20261119-8"></script>
+<script src="js/pestana-comentarios.js?v=20261119-8"></script>
+<script src="js/panel.js?v=20261119-8"></script>
 </body>
 </html>

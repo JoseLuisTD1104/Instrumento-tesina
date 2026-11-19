@@ -337,3 +337,8 @@ dialog .acciones { margin-top: 16px; }
 @media (max-width: 1000px) {
   .com-detalle { grid-template-columns: 200px minmax(0, 1fr); gap: 16px; }
 }
+
+/* ---------- Aviso de cierre de sesión por inactividad ---------- */
+.dialogo-sesion { width: min(420px, calc(100vw - 32px)); border-color: var(--accent); }
+.dialogo-sesion h2 { font-size: 18px; margin-bottom: 8px; }
+.dialogo-sesion .ayuda { font-size: 14px; line-height: 1.5; color: var(--text-dim); }

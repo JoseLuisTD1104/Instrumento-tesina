@@ -23,3 +23,5 @@ button {
 button:disabled { opacity: .5; cursor: default; }
 .error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 .error[hidden] { display: none; }
+.aviso { background: #2a2b31; color: var(--text); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-bottom: 12px; }
+.aviso[hidden] { display: none; }

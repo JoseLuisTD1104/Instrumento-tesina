@@ -3,7 +3,7 @@
 /** Pantalla del panel: solo se muestra con sesión válida. */
 class PanelPage {
   #auth;
-  #saliendo = false;
+  #guardia = null;
   #administrar = null;
   #comentarios = null;
 
@@ -16,7 +16,9 @@ class PanelPage {
       window.location.replace("./");
       return;
     }
-    const repo = new VideoRepositorio(this.#auth.clienteSupabase(), window.CORTO_CONFIG);
+    const subidas = new MonitorDeSubidas();
+    this.#guardia = new GuardiaDeSesion(this.#auth, subidas, new AvisoDeSesion(document.getElementById("dialogo-sesion")));
+    const repo = new VideoRepositorio(this.#auth.clienteSupabase(), window.CORTO_CONFIG, subidas);
     const dialogos = new Dialogos();
     const subir = new PestanaSubir(repo, dialogos);
     this.#administrar = new PestanaAdministrar(repo, dialogos);
@@ -27,14 +29,16 @@ class PanelPage {
     this.#comentarios.iniciar();
 
     document.body.classList.remove("verificando");
-    this.#auth.alCerrarseSesion(() => { if (!this.#saliendo) window.location.replace("./"); });
-    this.#activarPestanas();
-    document.getElementById("cerrar-sesion").addEventListener("click", async (e) => {
-      this.#saliendo = true;
-      e.currentTarget.disabled = true;
-      await this.#auth.cerrarSesion();
-      window.location.replace("./");
+    // Si Supabase termina la sesión por su cuenta (token revocado o vencido), también se sale.
+    this.#auth.alCerrarseSesion(() => {
+      if (!this.#guardia.cerrando) window.location.replace(GuardiaDeSesion.DESTINO_CIERRE);
     });
+    this.#activarPestanas();
+    document.getElementById("cerrar-sesion").addEventListener("click", (e) => {
+      e.currentTarget.disabled = true;
+      this.#guardia.cerrar();
+    });
+    this.#guardia.iniciar();
   }
 
   // ---- Cambio de pestañas (incluye flechas del teclado) ----
