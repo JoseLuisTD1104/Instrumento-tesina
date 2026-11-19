@@ -67,8 +67,12 @@ class PanelPage {
 
 protegerContraIframe();
 try {
-  new PanelPage(AdminLogin.desdeConfig()).iniciar();
+  new PanelPage(AdminLogin.desdeConfig()).iniciar().catch((e) => {
+    console.error(e);
+    window.location.replace("./");
+  });
 } catch (e) {
-  // Configuración inválida: no se muestra el panel.
+  // No se pudo arrancar: no se muestra el panel; el login explica la causa.
+  console.error(e);
   window.location.replace("./");
 }

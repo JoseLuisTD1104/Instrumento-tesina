@@ -47,18 +47,22 @@ class LoginPage {
     this.#error.hidden = !texto;
   }
 
-  static mostrarErrorDeConfiguracion() {
+  static mostrarErrorDeArranque(error) {
+    console.error(error); // la causa completa queda en la consola del navegador
+    const texto = error instanceof ConfiguracionInvalida
+      ? error.message
+      : "No se pudo cargar el panel. Recarga la página; si sigue, revisa la consola del navegador.";
     document.body.classList.remove("verificando");
-    const error = document.getElementById("error");
-    error.textContent = "El panel no está configurado. Revisa admin/config.js.";
-    error.hidden = false;
+    const caja = document.getElementById("error");
+    caja.textContent = texto;
+    caja.hidden = false;
     document.getElementById("form-login").hidden = true;
   }
 }
 
 protegerContraIframe();
 try {
-  new LoginPage(AdminLogin.desdeConfig()).iniciar();
+  new LoginPage(AdminLogin.desdeConfig()).iniciar().catch(LoginPage.mostrarErrorDeArranque);
 } catch (e) {
-  LoginPage.mostrarErrorDeConfiguracion();
+  LoginPage.mostrarErrorDeArranque(e);
 }

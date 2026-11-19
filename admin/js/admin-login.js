@@ -4,6 +4,7 @@
  * Login de la única persona administradora de "corto" con Supabase Auth.
  * Clase independiente de las pantallas: el login y el panel solo usan sus métodos.
  */
+/** Error de arranque con un mensaje que se puede mostrar en pantalla (no contiene secretos). */
 class ConfiguracionInvalida extends Error {}
 
 class AdminLogin {
@@ -19,30 +20,48 @@ class AdminLogin {
   #cliente;
 
   constructor(config, libreria) {
-    const url = String(config?.SUPABASE_URL || "").trim().replace(/\/+$/, "");
-    const clave = String(config?.SUPABASE_PUBLISHABLE_KEY || "").trim();
+    if (!config || typeof config !== "object") {
+      throw new ConfiguracionInvalida("No se cargó admin/config.js o no define CORTO_CONFIG.");
+    }
+    const url = String(config.SUPABASE_URL ?? "").trim().replace(/\/+$/, "");
+    const clave = String(config.SUPABASE_PUBLISHABLE_KEY ?? "").trim();
 
-    let partes;
-    try { partes = new URL(url); } catch { partes = null; }
-    if (!partes || partes.protocol !== "https:" || !partes.hostname.includes(".")) {
-      throw new ConfiguracionInvalida("SUPABASE_URL falta o no es una URL https completa.");
+    let partes = null;
+    try { partes = new URL(url); } catch { /* se informa abajo */ }
+    if (!partes || partes.protocol !== "https:" || !partes.hostname.includes(".") || partes.pathname !== "/") {
+      throw new ConfiguracionInvalida("SUPABASE_URL en admin/config.js no es una URL https completa del proyecto.");
     }
-    if (!clave.startsWith("sb_publishable_")) {
-      throw new ConfiguracionInvalida("SUPABASE_PUBLISHABLE_KEY falta o no es una clave publicable.");
+    if (!/^sb_publishable_[A-Za-z0-9_-]+$/.test(clave)) {
+      throw new ConfiguracionInvalida("SUPABASE_PUBLISHABLE_KEY en admin/config.js no es una clave publicable.");
     }
-    if (!libreria?.createClient) {
-      throw new ConfiguracionInvalida("No se cargó supabase-js.");
+    if (typeof libreria?.createClient !== "function") {
+      throw new ConfiguracionInvalida("No se cargó supabase-js (puede bloquearlo una extensión del navegador).");
+    }
+    const almacenamiento = AdminLogin.#sessionStorageDisponible();
+    if (!almacenamiento) {
+      throw new ConfiguracionInvalida("El navegador bloquea el almacenamiento de la sesión. Permite datos de sitio para esta página.");
     }
 
-    this.#cliente = libreria.createClient(url, clave, {
+    this.#cliente = libreria.createClient(partes.origin, clave, {
       auth: {
         // sessionStorage: la sesión se borra al cerrar la pestaña y no la comparten otras pestañas.
-        storage: window.sessionStorage,
+        storage: almacenamiento,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,
       },
     });
+  }
+
+  static #sessionStorageDisponible() {
+    try {
+      const prueba = "__corto_prueba";
+      window.sessionStorage.setItem(prueba, "1");
+      window.sessionStorage.removeItem(prueba);
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
   }
 
   static desdeConfig() {
