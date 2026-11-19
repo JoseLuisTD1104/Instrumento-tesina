@@ -108,7 +108,8 @@ class ValidadorVideo {
 
 /** Acceso a la tabla public.videos y a los buckets "videos" e "imagenes". */
 class VideoRepositorio {
-  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta";
+  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado,publicado_en";
+  static SEGUNDOS_FIRMA = 600; // 10 minutos: miniaturas y vista previa del panel
   static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
 
   #sb;
@@ -129,7 +130,9 @@ class VideoRepositorio {
   }
 
   async crear(fila) {
-    const { data, error } = await this.#sb.from("videos").insert(fila).select(VideoRepositorio.COLUMNAS).single();
+    // Todo video nuevo nace sin publicar: solo aparece en el feed al pulsar Publicar.
+    const { data, error } = await this.#sb.from("videos").insert({ ...fila, publicado: false })
+      .select(VideoRepositorio.COLUMNAS).single();
     if (error) throw this.#traducir(error, "No se pudo guardar el video en la base de datos.");
     return data;
   }
@@ -138,6 +141,23 @@ class VideoRepositorio {
     const { data, error } = await this.#sb.from("videos").update(cambios).eq("id", id)
       .select(VideoRepositorio.COLUMNAS).single();
     if (error) throw this.#traducir(error, "No se pudieron guardar los cambios.");
+    return data;
+  }
+
+  /** Publica el video: entra al final de la cola del feed (ordenada por publicado_en). */
+  async publicar(id) {
+    return this.#cambiarPublicacion(id, { publicado: true, publicado_en: new Date().toISOString() },
+      "No se pudo publicar el video.");
+  }
+
+  async quitarDelFeed(id) {
+    return this.#cambiarPublicacion(id, { publicado: false }, "No se pudo quitar el video del feed.");
+  }
+
+  async #cambiarPublicacion(id, cambios, generico) {
+    const { data, error } = await this.#sb.from("videos").update(cambios).eq("id", id)
+      .select(VideoRepositorio.COLUMNAS).single();
+    if (error) throw this.#traducir(error, generico);
     return data;
   }
 
@@ -180,9 +200,26 @@ class VideoRepositorio {
     }
   }
 
-  urlPublica(bucket, ruta) {
+  /** Solo para el bucket público "imagenes". */
+  urlImagen(ruta) {
     if (!ruta) return null;
-    return this.#sb.storage.from(bucket).getPublicUrl(ruta).data.publicUrl;
+    return this.#sb.storage.from("imagenes").getPublicUrl(ruta).data.publicUrl;
+  }
+
+  /** Bucket privado "videos": URL firmada de corta duración con la sesión del administrador. */
+  async urlVideo(ruta) {
+    const { data, error } = await this.#sb.storage.from("videos").createSignedUrl(ruta, VideoRepositorio.SEGUNDOS_FIRMA);
+    if (error || !data?.signedUrl) throw new ErrorPanel("No se pudo obtener la vista previa del video.");
+    return data.signedUrl;
+  }
+
+  /** Varias URLs firmadas en una sola petición. Devuelve Map(ruta -> url). */
+  async urlsVideos(rutas) {
+    const unicas = [...new Set(rutas.filter(Boolean))];
+    if (!unicas.length) return new Map();
+    const { data, error } = await this.#sb.storage.from("videos").createSignedUrls(unicas, VideoRepositorio.SEGUNDOS_FIRMA);
+    if (error || !Array.isArray(data)) return new Map();
+    return new Map(data.filter((d) => d.signedUrl && !d.error).map((d) => [d.path, d.signedUrl]));
   }
 
   nuevaRuta(carpeta, ext) {

@@ -191,7 +191,7 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
 /* ---------- Lista estilo Studio ---------- */
 .tabla { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
 .fila {
-  display: grid; grid-template-columns: minmax(0, 1fr) 140px 110px 170px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 120px 100px 130px 140px;
   align-items: center; gap: 16px; padding: 12px 20px;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
@@ -212,7 +212,15 @@ button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere;
 }
-.acciones-fila { display: flex; gap: 8px; justify-content: flex-end; }
+/* Editar, Publicar y Borrar uno debajo del otro */
+.acciones-fila { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.acciones-fila button { width: 100%; min-height: 34px; padding: 6px 10px; font-size: 13px; }
+.fila > span.estado-pub {
+  justify-self: start; white-space: normal;
+  font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-dim);
+}
+.fila > span.estado-pub[data-publicado="true"] { background: #15301f; color: #9be3b4; }
 .vacio { padding: 32px 20px; text-align: center; color: var(--text-dim); font-size: 14px; }
 
 /* ---------- Detalles del video ---------- */
@@ -244,6 +252,6 @@ dialog .acciones { margin-top: 16px; }
 
 /* Pantallas de escritorio angostas y tablet en modo escritorio */
 @media (max-width: 1000px) {
-  .fila { grid-template-columns: minmax(0, 1fr) 110px 90px 160px; gap: 12px; padding: 12px 14px; }
+  .fila { grid-template-columns: minmax(0, 1fr) 100px 84px 110px 128px; gap: 10px; padding: 12px 14px; }
   .detalles { grid-template-columns: minmax(0, 1fr) 220px; }
 }

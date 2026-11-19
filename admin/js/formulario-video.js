@@ -140,7 +140,7 @@ class FormularioVideo {
       img.removeAttribute("src");
       estado.textContent = `Se subirá al guardar: ${archivo.name} (${ValidadorVideo.tamano(archivo.size)})`;
     } else if (ruta) {
-      img.src = this.#repo.urlPublica("imagenes", ruta);
+      img.src = this.#repo.urlImagen(ruta);
       img.hidden = false;
       estado.textContent = "Imagen actual";
     } else {

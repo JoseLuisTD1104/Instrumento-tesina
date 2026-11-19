@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-4">
+<link rel="stylesheet" href="css/panel.css?v=20261119-5">
 </head>
 <body class="verificando">
 
@@ -77,7 +77,7 @@
       <p class="mensaje" id="admin-mensaje" role="status" hidden></p>
       <div class="tabla">
         <div class="fila fila-cabecera" aria-hidden="true">
-          <span>Video</span><span>Usuario</span><span>Fecha</span><span>Acciones</span>
+          <span>Video</span><span>Usuario</span><span>Subido</span><span>Estado</span><span>Acciones</span>
         </div>
         <div id="admin-filas"></div>
         <p class="vacio" id="admin-vacio" hidden>Todavía no hay videos subidos.</p>
@@ -220,19 +220,21 @@
     </div>
     <span data-usuario></span>
     <span data-fecha></span>
+    <span class="estado-pub" data-estado-pub></span>
     <div class="acciones-fila">
       <button class="btn-sec" type="button" data-editar>Editar</button>
+      <button class="btn-pri" type="button" data-publicar>Publicar</button>
       <button class="btn-peligro" type="button" data-borrar>Borrar</button>
     </div>
   </div>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-4"></script>
-<script src="config.js?v=20261119-4"></script>
-<script src="js/admin-login.js?v=20261119-4"></script>
-<script src="js/videos.js?v=20261119-4"></script>
-<script src="js/formulario-video.js?v=20261119-4"></script>
-<script src="js/pestanas-videos.js?v=20261119-4"></script>
-<script src="js/panel.js?v=20261119-4"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-5"></script>
+<script src="config.js?v=20261119-5"></script>
+<script src="js/admin-login.js?v=20261119-5"></script>
+<script src="js/videos.js?v=20261119-5"></script>
+<script src="js/formulario-video.js?v=20261119-5"></script>
+<script src="js/pestanas-videos.js?v=20261119-5"></script>
+<script src="js/panel.js?v=20261119-5"></script>
 </body>
 </html>

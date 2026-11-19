@@ -102,7 +102,7 @@ class PestanaSubir {
       const elegido = await this.#dialogos.elegirVideo(videos);
       if (elegido) {
         // Copia todos los campos menos el archivo de video; las imágenes conservan su ruta.
-        const { id, ruta_archivo, creado_en, ...datos } = elegido;
+        const { id, ruta_archivo, creado_en, publicado, publicado_en, ...datos } = elegido;
         this.#form.llenar(datos);
         PanelFormato.mensaje(this.#mensaje, `Datos copiados de «${elegido.titulo}». Cambia solo lo necesario.`, "info");
       }
@@ -199,6 +199,8 @@ class PestanaAdministrar {
   #editando = null;
   #desactualizada = true;
   #ocupado = false;
+  #turnoRender = 0;
+  #reintentoVista = null;
 
   #vistaLista = document.getElementById("admin-lista");
   #vistaEditar = document.getElementById("admin-editar");
@@ -225,6 +227,18 @@ class PestanaAdministrar {
     this.#botonDeshacer.addEventListener("click", () => { this.#form.restaurar(); PanelFormato.mensaje(this.#mensajeEditar, ""); });
     this.#botonVolver.addEventListener("click", () => this.#volver());
     this.#botonRecargar.addEventListener("click", () => this.#cargar());
+    // La vista previa usa una URL firmada de 10 minutos: si caduca, se pide otra una vez.
+    this.#video.addEventListener("error", () => {
+      const video = this.#editando;
+      if (!video || this.#reintentoVista === video.id) return;
+      this.#reintentoVista = video.id;
+      const segundo = this.#video.currentTime;
+      this.#repo.urlVideo(video.ruta_archivo).then((url) => {
+        if (this.#editando?.id !== video.id) return;
+        this.#video.src = url;
+        this.#video.currentTime = segundo;
+      }).catch(() => {});
+    });
   }
 
   marcarDesactualizada() { this.#desactualizada = true; }
@@ -240,7 +254,7 @@ class PestanaAdministrar {
       this.#videos = await this.#repo.listar();
       this.#desactualizada = false;
       PanelFormato.mensaje(this.#mensajeLista, "");
-      this.#render();
+      await this.#render();
     } catch (e) {
       PanelFormato.mensaje(this.#mensajeLista, PanelFormato.errorVisible(e, "No se pudo cargar la lista de videos."), "error");
     } finally {
@@ -248,22 +262,34 @@ class PestanaAdministrar {
     }
   }
 
-  #render() {
-    this.#filas.replaceChildren(...this.#videos.map((v) => this.#fila(v)));
+  async #render() {
+    const turno = ++this.#turnoRender;
+    const urls = await this.#repo.urlsVideos(this.#videos.map((v) => v.ruta_archivo)).catch(() => new Map());
+    if (turno !== this.#turnoRender) return; // llegó un render más nuevo
+    this.#filas.replaceChildren(...this.#videos.map((v) => this.#fila(v, urls.get(v.ruta_archivo))));
     this.#vacio.hidden = this.#videos.length > 0;
     this.#conteo.textContent = this.#videos.length === 1 ? "1 video" : `${this.#videos.length} videos`;
   }
 
-  #fila(video) {
+  #fila(video, urlFirmada) {
     const fila = document.getElementById("tpl-fila").content.firstElementChild.cloneNode(true);
     const miniatura = fila.querySelector("[data-miniatura]");
-    miniatura.src = `${this.#repo.urlPublica("videos", video.ruta_archivo)}#t=0.5`;
+    if (urlFirmada) miniatura.src = `${urlFirmada}#t=0.5`;
+    const estado = fila.querySelector("[data-estado-pub]");
+    estado.textContent = video.publicado ? `Publicado · ${PanelFormato.fecha(video.publicado_en)}` : "Sin publicar";
+    estado.dataset.publicado = String(Boolean(video.publicado));
     fila.querySelector("[data-titulo]").textContent = video.titulo;
     fila.querySelector("[data-descripcion]").textContent = video.descripcion ?? "Sin descripción";
     fila.querySelector("[data-usuario]").textContent = video.usuario ? `@${video.usuario}` : "—";
     fila.querySelector("[data-fecha]").textContent = PanelFormato.fecha(video.creado_en);
     const editar = fila.querySelector("[data-editar]");
     const borrar = fila.querySelector("[data-borrar]");
+    const publicar = fila.querySelector("[data-publicar]");
+    publicar.textContent = video.publicado ? "Quitar del feed" : "Publicar";
+    publicar.classList.toggle("btn-pri", !video.publicado);
+    publicar.classList.toggle("btn-sec", Boolean(video.publicado));
+    publicar.setAttribute("aria-label", `${video.publicado ? "Quitar del feed" : "Publicar"} «${video.titulo}»`);
+    publicar.addEventListener("click", () => this.#alternarPublicacion(video, publicar));
     editar.setAttribute("aria-label", `Editar «${video.titulo}»`);
     borrar.setAttribute("aria-label", `Borrar «${video.titulo}»`);
     editar.addEventListener("click", () => this.#abrirEditor(video));
@@ -271,10 +297,35 @@ class PestanaAdministrar {
     return fila;
   }
 
-  #abrirEditor(video) {
+  async #alternarPublicacion(video, boton) {
+    if (this.#ocupado) return;
+    if (video.publicado && !(await this.#dialogos.confirmar(
+      `¿Quitar «${video.titulo}» del feed? Dejará de verse al recargar el feed.`, "Quitar del feed"))) return;
+    this.#ocupado = true;
+    boton.disabled = true;
+    try {
+      const actualizado = video.publicado ? await this.#repo.quitarDelFeed(video.id) : await this.#repo.publicar(video.id);
+      this.#videos = this.#videos.map((v) => (v.id === actualizado.id ? actualizado : v));
+      PanelFormato.mensaje(this.#mensajeLista, actualizado.publicado
+        ? `«${actualizado.titulo}» ya está en el feed, al final de la cola.`
+        : `«${actualizado.titulo}» se quitó del feed.`, "exito");
+      await this.#render();
+    } catch (e) {
+      boton.disabled = false;
+      PanelFormato.mensaje(this.#mensajeLista, PanelFormato.errorVisible(e, "No se pudo cambiar la publicación."), "error");
+    } finally {
+      this.#ocupado = false;
+    }
+  }
+
+  async #abrirEditor(video) {
     this.#editando = video;
+    this.#reintentoVista = null;
     this.#form.llenar(video);
-    this.#video.src = this.#repo.urlPublica("videos", video.ruta_archivo);
+    this.#video.removeAttribute("src");
+    this.#repo.urlVideo(video.ruta_archivo)
+      .then((url) => { if (this.#editando?.id === video.id) this.#video.src = url; })
+      .catch((e) => PanelFormato.mensaje(this.#mensajeEditar, PanelFormato.errorVisible(e, "No se pudo cargar la vista previa."), "error"));
     document.getElementById("editar-ruta").textContent = video.ruta_archivo;
     document.getElementById("editar-fecha").textContent = PanelFormato.fecha(video.creado_en);
     PanelFormato.mensaje(this.#mensajeEditar, "");
@@ -292,7 +343,7 @@ class PestanaAdministrar {
     this.#video.load();
     this.#vistaEditar.hidden = true;
     this.#vistaLista.hidden = false;
-    if (this.#desactualizada) await this.#cargar(); else this.#render();
+    if (this.#desactualizada) await this.#cargar(); else await this.#render();
   }
 
   async #guardar() {
@@ -350,7 +401,7 @@ class PestanaAdministrar {
     try {
       const pendientes = await this.#repo.borrarVideo(video);
       this.#videos = this.#videos.filter((v) => v.id !== video.id);
-      this.#render();
+      await this.#render();
       PanelFormato.mensaje(this.#mensajeLista, pendientes
         ? `Se borró «${video.titulo}», pero ${pendientes} archivo(s) no se pudieron eliminar de Storage.`
         : `Se borró «${video.titulo}».`, pendientes ? "error" : "exito");

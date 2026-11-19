@@ -3,224 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Feed de videos</title>
-<style>
-  :root {
-    --bg: #0f1013;
-    --surface: #1c1d22;
-    --surface-hover: #2a2b31;
-    --text: #f2f2f4;
-    --text-dim: #a6a7ad;
-    --accent: #ff3b5c;
-    --header-h: 64px;
-    --gap: 16px;
-    --radius: 14px;
-    --btn: 48px;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    overflow: hidden;
-  }
-
-  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-  svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-  /* ---------- Barra superior: solo logo, centrado sobre el video ---------- */
-  .topbar {
-    position: fixed; inset: 0 0 auto 0;
-    height: var(--header-h);
-    display: flex; justify-content: center; align-items: center;
-    background: linear-gradient(var(--bg) 60%, transparent);
-    z-index: 10;
-  }
-  .logo { font-weight: 800; font-size: 24px; letter-spacing: -0.5px; }
-  .logo span { color: var(--accent); }
-
-  /* ---------- Feed: un video por pantalla ---------- */
-  .feed {
-    position: fixed; inset: var(--header-h) 0 0 0;
-    overflow-y: scroll;
-    scroll-snap-type: y mandatory;
-    scrollbar-width: none;
-  }
-  .feed::-webkit-scrollbar { display: none; }
-
-  .slide {
-    height: 100%;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    column-gap: var(--gap);
-    padding: 8px 0 24px;
-  }
-
-  /* ---------- Reproductor vertical 9:16 ---------- */
-  .player {
-    grid-column: 2;
-    position: relative;
-    height: 100%;
-    aspect-ratio: 9 / 16;
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .media {
-    position: absolute; inset: 0;
-    display: grid; place-items: center;
-    color: rgba(255,255,255,.35); font-weight: 600; letter-spacing: 1px;
-  }
-  .v1 .media { background: linear-gradient(160deg, #5b4b8a, #c0587e 60%, #f2a65a); }
-  .v2 .media { background: linear-gradient(160deg, #1f4e5f, #2a9d8f 55%, #e9c46a); }
-  .v3 .media { background: linear-gradient(160deg, #3a3a52, #6d597a 50%, #e56b6f); }
-
-  .player-top {
-    position: absolute; top: 12px; right: 12px;
-    display: flex; gap: 8px;
-  }
-  .icon-chip {
-    width: 36px; height: 36px; border-radius: 50%;
-    display: grid; place-items: center;
-    background: rgba(0,0,0,.45);
-  }
-  .icon-chip svg { width: 18px; height: 18px; }
-
-  .overlay {
-    position: absolute; inset: auto 0 0 0;
-    padding: 64px 16px 20px;
-    background: linear-gradient(transparent, rgba(0,0,0,.75));
-  }
-  .author { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; border: 2px solid #fff; flex-shrink: 0; }
-  .username { font-weight: 700; font-size: 15px; }
-  .follow { border: 1px solid rgba(255,255,255,.7); padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; }
-  .caption { font-size: 14px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .caption b { font-weight: 600; }
-  .sound { margin-top: 8px; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
-  .sound svg { width: 14px; height: 14px; }
-
-  .progress { position: absolute; inset: auto 0 0 0; height: 3px; background: rgba(255,255,255,.25); }
-  .progress span { display: block; height: 100%; width: 38%; background: #fff; }
-
-  /* ---------- Columna de interacciones (fuera del video) ---------- */
-  .actions {
-    grid-column: 3;
-    justify-self: start;
-    display: flex; flex-direction: column; justify-content: flex-end;
-    gap: 18px;
-    padding-bottom: 8px;
-  }
-  .action { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
-  .action .circle {
-    width: var(--btn); height: var(--btn); border-radius: 50%;
-    display: grid; place-items: center;
-    background: var(--surface); color: var(--text);
-    transition: background .15s;
-  }
-  .action:hover .circle { background: var(--surface-hover); }
-  .action.liked .circle { color: var(--accent); }
-  .action.liked svg { fill: var(--accent); }
-  .disc { width: var(--btn); height: var(--btn); border-radius: 10px; background: linear-gradient(135deg, #444, #888); border: 2px solid var(--surface-hover); }
-
-  /* ---------- Navegación entre videos ---------- */
-  .nav {
-    position: fixed; right: 32px; top: 50%;
-    transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 12px;
-    z-index: 5;
-  }
-  .nav button {
-    width: 48px; height: 48px; border-radius: 50%;
-    display: grid; place-items: center;
-    background: var(--surface);
-  }
-  .nav button:hover { background: var(--surface-hover); }
-  .nav button[disabled] { opacity: .35; cursor: default; }
-
-  button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-
-  /* ================= MÓVIL (vertical, hasta 767px) ================= */
-  @media (max-width: 767px) {
-    :root { --header-h: 48px; --btn: 44px; }
-
-    /* Logo en su propia franja: el video empieza debajo, no lo tapa */
-    .topbar { background: var(--bg); }
-    .logo { font-size: 20px; }
-
-    /* El video ocupa todo lo que queda de pantalla */
-    .slide {
-      position: relative;
-      grid-template-columns: 1fr;
-      column-gap: 0;
-      padding: 0;
-    }
-    .player {
-      grid-column: 1;
-      width: 100%;
-      height: 100%;
-      aspect-ratio: auto;
-      border-radius: 0;
-    }
-
-    /* Interacciones encima del video, a la derecha, al alcance del pulgar */
-    .actions {
-      position: absolute;
-      right: 8px;
-      bottom: calc(96px + env(safe-area-inset-bottom));
-      gap: 14px;
-      padding: 0;
-      z-index: 2;
-    }
-    .action { color: var(--text); text-shadow: 0 1px 3px rgba(0,0,0,.6); }
-    .action .circle { background: transparent; width: var(--btn); height: var(--btn); }
-    .action .circle svg { width: 30px; height: 30px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
-    .action:hover .circle { background: transparent; }
-    .disc { width: 40px; height: 40px; border-radius: 8px; border-color: #fff; }
-
-    /* Texto abajo, sin chocar con la columna de botones */
-    .overlay { padding: 72px 72px calc(18px + env(safe-area-inset-bottom)) 14px; }
-    .caption { font-size: 14px; }
-
-    .player-top { top: 10px; right: 10px; }
-
-    /* En móvil se navega deslizando: las flechas sobran */
-    .nav { display: none; }
-  }
-
-  /* ================= TABLET (táctil, 768px a 1366px) ================= */
-  @media (min-width: 768px) and (max-width: 1366px) and (pointer: coarse) {
-    :root { --header-h: 56px; --btn: 52px; }
-
-    /* Logo en franja propia, igual que en móvil */
-    .topbar { background: var(--bg); }
-
-    /* Video 9:16 centrado a toda la altura; botones a su derecha sin taparlo */
-    .slide { padding: 0 0 calc(16px + env(safe-area-inset-bottom)); column-gap: 12px; }
-    .player { border-radius: 12px; }
-    .actions { gap: 16px; padding-bottom: 12px; }
-    .action { color: var(--text); font-size: 13px; }
-    .action .circle svg { width: 26px; height: 26px; }
-    .action:hover .circle { background: var(--surface); }
-
-    /* Se navega deslizando, como en móvil */
-    .nav { display: none; }
-  }
-
-  /* Tablet en horizontal: menos alto disponible, todo más compacto */
-  @media (min-width: 768px) and (max-width: 1366px) and (pointer: coarse) and (orientation: landscape) {
-    :root { --header-h: 48px; --btn: 46px; }
-    .logo { font-size: 20px; }
-    .slide { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
-    .actions { gap: 10px; padding-bottom: 6px; }
-    .action { font-size: 12px; }
-    .disc { width: 42px; height: 42px; }
-  }
-</style>
+<title>corto</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="feed.css?v=20261119-5">
 </head>
 <body>
 
@@ -229,103 +16,63 @@
 </header>
 
 <div class="nav" aria-label="Navegar entre videos">
-  <button type="button" aria-label="Video anterior" disabled>
+  <button type="button" id="nav-anterior" aria-label="Video anterior" disabled>
     <svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
   </button>
-  <button type="button" aria-label="Video siguiente">
+  <button type="button" id="nav-siguiente" aria-label="Video siguiente" disabled>
     <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
   </button>
 </div>
 
-<main class="feed">
-
-  <!-- Video 1 -->
-  <section class="slide v1">
-    <article class="player">
-      <div class="media">VIDEO 9:16</div>
-      <div class="player-top">
-        <button class="icon-chip" type="button" aria-label="Pausar"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
-        <button class="icon-chip" type="button" aria-label="Activar sonido"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg></button>
-      </div>
-      <div class="overlay">
-        <div class="author">
-          <div class="avatar"></div>
-          <span class="username">@usuario.uno</span>
-          <button class="follow" type="button">Seguir</button>
-        </div>
-        <p class="caption">Descripción del video con texto que se corta a dos líneas para no tapar el contenido <b>#ejemplo #shorts</b></p>
-        <p class="sound"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>sonido original · usuario.uno</p>
-      </div>
-      <div class="progress"><span></span></div>
-    </article>
-    <aside class="actions" aria-label="Interacciones">
-      <button class="action liked" type="button" aria-label="Me gusta"><span class="circle"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg></span>241 mil</button>
-      <button class="action" type="button" aria-label="Comentarios"><span class="circle"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg></span>309</button>
-      <button class="action" type="button" aria-label="Guardar"><span class="circle"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>12 mil</button>
-      <button class="action" type="button" aria-label="Compartir"><span class="circle"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></span>Compartir</button>
-      <button class="action" type="button" aria-label="Más opciones"><span class="circle"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span></button>
-      <div class="disc" aria-hidden="true"></div>
-    </aside>
-  </section>
-
-  <!-- Video 2 -->
-  <section class="slide v2">
-    <article class="player">
-      <div class="media">VIDEO 9:16</div>
-      <div class="player-top">
-        <button class="icon-chip" type="button" aria-label="Pausar"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
-        <button class="icon-chip" type="button" aria-label="Activar sonido"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg></button>
-      </div>
-      <div class="overlay">
-        <div class="author">
-          <div class="avatar"></div>
-          <span class="username">@usuario.dos</span>
-          <button class="follow" type="button">Seguir</button>
-        </div>
-        <p class="caption">Segundo video de ejemplo <b>#feed</b></p>
-        <p class="sound"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>sonido original · usuario.dos</p>
-      </div>
-      <div class="progress"><span></span></div>
-    </article>
-    <aside class="actions" aria-label="Interacciones">
-      <button class="action" type="button" aria-label="Me gusta"><span class="circle"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg></span>100 mil</button>
-      <button class="action" type="button" aria-label="Comentarios"><span class="circle"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg></span>181</button>
-      <button class="action" type="button" aria-label="Guardar"><span class="circle"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>3 mil</button>
-      <button class="action" type="button" aria-label="Compartir"><span class="circle"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></span>Compartir</button>
-      <button class="action" type="button" aria-label="Más opciones"><span class="circle"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span></button>
-      <div class="disc" aria-hidden="true"></div>
-    </aside>
-  </section>
-
-  <!-- Video 3 -->
-  <section class="slide v3">
-    <article class="player">
-      <div class="media">VIDEO 9:16</div>
-      <div class="player-top">
-        <button class="icon-chip" type="button" aria-label="Pausar"><svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
-        <button class="icon-chip" type="button" aria-label="Activar sonido"><svg viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg></button>
-      </div>
-      <div class="overlay">
-        <div class="author">
-          <div class="avatar"></div>
-          <span class="username">@usuario.tres</span>
-          <button class="follow" type="button">Seguir</button>
-        </div>
-        <p class="caption">Tercer video de ejemplo <b>#reels</b></p>
-        <p class="sound"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>sonido original · usuario.tres</p>
-      </div>
-      <div class="progress"><span></span></div>
-    </article>
-    <aside class="actions" aria-label="Interacciones">
-      <button class="action" type="button" aria-label="Me gusta"><span class="circle"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg></span>2 M</button>
-      <button class="action" type="button" aria-label="Comentarios"><span class="circle"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg></span>6952</button>
-      <button class="action" type="button" aria-label="Guardar"><span class="circle"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>103 mil</button>
-      <button class="action" type="button" aria-label="Compartir"><span class="circle"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></span>Compartir</button>
-      <button class="action" type="button" aria-label="Más opciones"><span class="circle"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span></button>
-      <div class="disc" aria-hidden="true"></div>
-    </aside>
-  </section>
-
+<main class="feed" id="feed">
+  <p class="estado-feed" id="feed-estado" role="status">Cargando videos…</p>
 </main>
+
+<template id="tpl-slide">
+  <section class="slide">
+    <article class="player">
+      <div class="media">
+        <video playsinline muted loop preload="none"
+               disablepictureinpicture disableremoteplayback
+               controlslist="nodownload noplaybackrate noremoteplayback nofullscreen"
+               tabindex="-1" aria-hidden="true"></video>
+        <p class="aviso" data-aviso hidden></p>
+      </div>
+      <div class="escudo" data-escudo aria-hidden="true"></div>
+      <div class="player-top">
+        <button class="icon-chip" type="button" data-pausa aria-label="Pausar">
+          <svg viewBox="0 0 24 24" data-icono-pausa><path d="M9 5v14M15 5v14"/></svg>
+          <svg viewBox="0 0 24 24" data-icono-play hidden><path d="M7 5l12 7-12 7z"/></svg>
+        </button>
+        <button class="icon-chip" type="button" data-sonido aria-label="Activar sonido">
+          <svg viewBox="0 0 24 24" data-icono-mudo><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+          <svg viewBox="0 0 24 24" data-icono-sonido hidden><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+        </button>
+      </div>
+      <div class="overlay">
+        <div class="author">
+          <div class="avatar"><img data-avatar alt="" hidden></div>
+          <span class="username" data-usuario></span>
+          <button class="follow" type="button">Seguir</button>
+        </div>
+        <p class="caption" data-descripcion></p>
+        <p class="sound" data-sonido-texto><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span data-sonido-nombre></span></p>
+      </div>
+      <div class="progress"><span data-progreso></span></div>
+    </article>
+    <aside class="actions" aria-label="Interacciones">
+      <button class="action" type="button" aria-label="Me gusta"><span class="circle"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg></span></button>
+      <button class="action" type="button" aria-label="Comentarios"><span class="circle"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z"/></svg></span></button>
+      <button class="action" type="button" aria-label="Guardar"><span class="circle"><svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span></button>
+      <button class="action" type="button" aria-label="Compartir"><span class="circle"><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></span></button>
+      <button class="action" type="button" aria-label="Más opciones"><span class="circle"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span></button>
+      <div class="disc" aria-hidden="true"><img data-portada alt="" hidden></div>
+    </aside>
+  </section>
+</template>
+
+<script src="../admin/vendor/supabase-js-2.118.0.js?v=20261119-5"></script>
+<script src="../admin/config.js?v=20261119-5"></script>
+<script src="feed.js?v=20261119-5"></script>
 </body>
 </html>
