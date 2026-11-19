@@ -6,6 +6,7 @@ class PanelPage {
   #guardia = null;
   #administrar = null;
   #comentarios = null;
+  #autenticacion = null;
 
   constructor(auth) {
     this.#auth = auth;
@@ -29,6 +30,8 @@ class PanelPage {
     subir.iniciar();
     this.#administrar.iniciar();
     this.#comentarios.iniciar();
+    this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo());
+    this.#autenticacion.iniciar();
 
     document.body.classList.remove("verificando");
     // Si Supabase termina la sesión por su cuenta (token revocado o vencido), también se sale.
@@ -56,6 +59,14 @@ class PanelPage {
       tab.focus();
       if (tab.id === "tab-administrar") this.#administrar.mostrar();
       if (tab.id === "tab-comentarios") this.#comentarios.mostrar();
+      // Autenticación se proyecta sin que nadie toque el equipo: pausa la inactividad mientras se ve.
+      if (tab.id === "tab-autenticacion") {
+        this.#guardia.pausarInactividad();
+        this.#autenticacion.mostrar();
+      } else {
+        this.#autenticacion.ocultar();
+        this.#guardia.reanudarInactividad();
+      }
     };
     tabs.forEach((tab, i) => {
       tab.addEventListener("click", () => activar(tab));

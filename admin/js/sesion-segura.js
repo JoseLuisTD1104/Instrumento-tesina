@@ -66,6 +66,7 @@ class GuardiaDeSesion {
   #ultimaActividad = Date.now();
   #intervalo = null;
   #cerrando = false;
+  #restanteEnPausa = null; // ms de inactividad que quedaban al pausar (null = no está en pausa)
 
   constructor(auth, subidas, aviso) {
     this.#auth = auth;
@@ -76,6 +77,27 @@ class GuardiaDeSesion {
   }
 
   get cerrando() { return this.#cerrando; }
+
+  get enPausa() { return this.#restanteEnPausa !== null; }
+
+  /**
+   * Pausa el contador de inactividad (pestaña Autenticación proyectada: nadie mueve el ratón).
+   * Guarda cuánto le quedaba. El tope de 4 horas sigue corriendo.
+   */
+  pausarInactividad() {
+    if (this.enPausa || this.#cerrando) return;
+    const inactivo = Date.now() - this.#ultimaActividad;
+    this.#restanteEnPausa = Math.max(0, GuardiaDeSesion.INACTIVIDAD_MS - inactivo);
+    this.#aviso.ocultar();
+  }
+
+  /** Reanuda desde el tiempo guardado; si quedaba menos de 1 minuto, el aviso sale de inmediato. */
+  reanudarInactividad() {
+    if (!this.enPausa) return;
+    this.#ultimaActividad = Date.now() - (GuardiaDeSesion.INACTIVIDAD_MS - this.#restanteEnPausa);
+    this.#restanteEnPausa = null;
+    this.#revisar();
+  }
 
   iniciar() {
     const alActuar = () => this.#registrarActividad();
@@ -100,7 +122,8 @@ class GuardiaDeSesion {
 
   /** Con el aviso visible, solo "Seguir conectado" (o una subida que termina) reinicia el contador. */
   #registrarActividad(forzar = false) {
-    if (this.#cerrando || (this.#aviso.visible && !forzar)) return;
+    // En pausa la actividad no reinicia el contador: al reanudar sigue desde el tiempo guardado.
+    if (this.#cerrando || this.enPausa || (this.#aviso.visible && !forzar)) return;
     this.#ultimaActividad = Date.now();
   }
 
@@ -111,6 +134,7 @@ class GuardiaDeSesion {
       this.cerrar();
       return;
     }
+    if (this.enPausa) return;
     if (this.#subidas.enCurso) {
       this.#ultimaActividad = ahora;
       this.#aviso.ocultar();

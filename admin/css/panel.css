@@ -385,3 +385,35 @@ dialog .acciones { margin-top: 16px; }
 }
 .barra-enlace-previa span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barra-enlace-previa svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Pestaña Autenticación: código para proyectar ---------- */
+/* El código usa todo el ancho de la ventana (no solo la columna del panel) para poder ser enorme. */
+.panel-autenticacion { width: 100vw; margin-left: calc(50% - 50vw); padding-left: 16px; padding-right: 16px; }
+.auth-escenario {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3vh; padding: 2vh 0 1vh; background: var(--bg); color: var(--text);
+}
+/* Fuente monoespaciada; font-size 30vh deja la altura de los dígitos por encima del 20% de la pantalla */
+.auth-codigo {
+  display: flex; gap: 0.35em;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 30vh; font-weight: 700; line-height: 1; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  transition: opacity .35s ease, filter .35s ease, transform .35s ease;
+}
+.auth-codigo.cambiando { opacity: 0; filter: blur(8px); transform: translateY(-0.04em); }
+.auth-reloj { display: flex; align-items: center; gap: 16px; }
+.auth-circulo { width: 8vh; height: 8vh; min-width: 48px; min-height: 48px; transform: rotate(-90deg); }
+.auth-circulo circle { fill: none; stroke-width: 12; }
+.auth-pista { stroke: var(--surface-2); }
+.auth-arco { stroke: var(--accent); transition: stroke-dashoffset .25s linear; }
+.auth-tiempo {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: max(5vh, 28px); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-dim);
+}
+.auth-acciones { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 8px; text-align: center; }
+
+/* Pantalla completa: solo el código, el círculo y el tiempo, sobre fondo oscuro */
+.auth-escenario:fullscreen { background: #000; gap: 5vh; padding: 0; }
+.auth-escenario:fullscreen .auth-circulo { width: 10vh; height: 10vh; }
+.auth-escenario::backdrop { background: #000; }

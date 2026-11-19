@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-10">
+<link rel="stylesheet" href="css/panel.css?v=20261119-11">
 </head>
 <body class="verificando">
 
@@ -23,6 +23,7 @@
     <button class="tab" role="tab" id="tab-administrar" aria-controls="panel-administrar" aria-selected="false" tabindex="-1">Administrar videos</button>
     <button class="tab" role="tab" id="tab-comentarios" aria-controls="panel-comentarios" aria-selected="false" tabindex="-1">Comentarios</button>
     <button class="tab" role="tab" id="tab-analiticas" aria-controls="panel-analiticas" aria-selected="false" tabindex="-1">Analíticas</button>
+    <button class="tab" role="tab" id="tab-autenticacion" aria-controls="panel-autenticacion" aria-selected="false" tabindex="-1">Autenticación</button>
   </div>
 
   <!-- ============ Subir videos ============ -->
@@ -219,6 +220,27 @@
   </section>
 
   <section class="panel" id="panel-analiticas" role="tabpanel" aria-labelledby="tab-analiticas" tabindex="0" hidden></section>
+
+  <!-- ============ Autenticación ============ -->
+  <section class="panel panel-autenticacion" id="panel-autenticacion" role="tabpanel" aria-labelledby="tab-autenticacion" tabindex="0" hidden>
+    <p class="mensaje" id="auth-mensaje" role="status" hidden></p>
+    <div class="auth-escenario" id="auth-escenario">
+      <p class="auth-codigo" id="auth-codigo" role="img" aria-label="Código">
+        <span id="auth-grupo-1">···</span><span id="auth-grupo-2">···</span>
+      </p>
+      <div class="auth-reloj">
+        <svg class="auth-circulo" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="auth-pista" cx="50" cy="50" r="44"/>
+          <circle class="auth-arco" id="auth-arco" cx="50" cy="50" r="44"/>
+        </svg>
+        <span class="auth-tiempo" id="auth-tiempo" aria-label="Tiempo restante">05:00</span>
+      </div>
+    </div>
+    <div class="auth-acciones">
+      <button class="btn-sec" type="button" id="auth-pantalla-completa">Pantalla completa</button>
+      <p class="ayuda">Esc para salir de la pantalla completa. Mientras esta pestaña está abierta, la sesión no se cierra por inactividad.</p>
+    </div>
+  </section>
 </main>
 
 <!-- ============ Diálogos ============ -->
@@ -435,14 +457,15 @@
   </li>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-10"></script>
-<script src="config.js?v=20261119-10"></script>
-<script src="js/admin-login.js?v=20261119-10"></script>
-<script src="js/sesion-segura.js?v=20261119-10"></script>
-<script src="js/videos.js?v=20261119-10"></script>
-<script src="js/formulario-video.js?v=20261119-10"></script>
-<script src="js/pestanas-videos.js?v=20261119-10"></script>
-<script src="js/pestana-comentarios.js?v=20261119-10"></script>
-<script src="js/panel.js?v=20261119-10"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-11"></script>
+<script src="config.js?v=20261119-11"></script>
+<script src="js/admin-login.js?v=20261119-11"></script>
+<script src="js/sesion-segura.js?v=20261119-11"></script>
+<script src="js/videos.js?v=20261119-11"></script>
+<script src="js/formulario-video.js?v=20261119-11"></script>
+<script src="js/pestanas-videos.js?v=20261119-11"></script>
+<script src="js/pestana-comentarios.js?v=20261119-11"></script>
+<script src="js/pestana-autenticacion.js?v=20261119-11"></script>
+<script src="js/panel.js?v=20261119-11"></script>
 </body>
 </html>
