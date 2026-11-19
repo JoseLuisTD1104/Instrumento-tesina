@@ -21,10 +21,9 @@ class ValidadorVideo {
   });
   static PATRON_USUARIO = /^[A-Za-z0-9._]+$/;
 
-  // No conozco el límite configurado en el bucket "videos": 50 MB es el límite
-  // por archivo del plan gratuito de Supabase. Cámbialo si tu bucket permite otro.
-  static MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-  static MAX_IMAGEN_BYTES = 2 * 1024 * 1024;
+  // Igual a los límites configurados en los buckets de Supabase.
+  static MAX_VIDEO_BYTES = 50 * 1024 * 1024;   // bucket "videos"
+  static MAX_IMAGEN_BYTES = 10 * 1024 * 1024;  // bucket "imagenes"
 
   static TIPOS_VIDEO = Object.freeze({ "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" });
   static TIPOS_IMAGEN = Object.freeze({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" });
@@ -83,7 +82,7 @@ class ValidadorVideo {
     if (!ext) throw new ErrorPanel("La imagen debe ser PNG, JPEG o WebP.");
     if (archivo.size === 0) throw new ErrorPanel("La imagen está vacía.");
     if (archivo.size > ValidadorVideo.MAX_IMAGEN_BYTES) {
-      throw new ErrorPanel(`La imagen pesa ${ValidadorVideo.tamano(archivo.size)}; el máximo es 2 MB.`);
+      throw new ErrorPanel(`La imagen pesa ${ValidadorVideo.tamano(archivo.size)}; el máximo es ${ValidadorVideo.tamano(ValidadorVideo.MAX_IMAGEN_BYTES)}.`);
     }
     const b = await ValidadorVideo.#bytes(archivo, 12);
     const firmas = {
