@@ -10,6 +10,7 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
 
 body {
   min-height: 100vh;
@@ -31,7 +32,6 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 }
 .logo { font-weight: 800; font-size: 22px; letter-spacing: -0.5px; }
 .logo span { color: var(--accent); }
-.badge { font-size: 13px; color: var(--text-dim); padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
 
 /* ---------- Contenedor ---------- */
 .wrap {
@@ -106,3 +106,144 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 
 /* Nada del panel se muestra hasta que Supabase confirma la sesión */
 body.verificando .topbar, body.verificando .wrap { visibility: hidden; }
+
+/* ---------- Botones ---------- */
+.btn-pri, .btn-sec, .btn-peligro {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 40px; padding: 8px 16px; border-radius: 8px;
+  font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.btn-pri { background: var(--accent); color: #fff; }
+.btn-pri:hover { filter: brightness(1.08); }
+.btn-sec { border: 1px solid var(--border); color: var(--text); }
+.btn-sec:hover { background: var(--surface-2); }
+.btn-peligro { border: 1px solid #5a2630; color: #ff8fa3; }
+.btn-peligro:hover { background: #2a1519; }
+.btn-link { color: var(--text-dim); font-size: 14px; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+.btn-link:hover { color: var(--text); }
+button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+.btn-archivo { cursor: pointer; }
+.btn-archivo:focus-within { outline: 2px solid var(--text); outline-offset: 3px; }
+
+/* ---------- Encabezados de sección y mensajes ---------- */
+.encabezado {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 20px;
+}
+.encabezado h2 { font-size: 20px; font-weight: 700; }
+.archivo { margin-top: 4px; font-size: 13px; color: var(--text-dim); word-break: break-all; }
+.acciones { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+.mensaje {
+  margin-bottom: 16px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+  background: var(--surface-2); color: var(--text);
+}
+.mensaje[data-tipo="error"] { background: #3a1820; color: #ffb3c0; }
+.mensaje[data-tipo="exito"] { background: #15301f; color: #9be3b4; }
+
+/* ---------- Formulario del video ---------- */
+.card-form { padding: clamp(20px, 3vw, 32px); }
+.form-video { border: 0; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
+.form-video:disabled { opacity: .7; }
+.campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.campo label, .campo .etiqueta { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.req { font-weight: 400; color: #7c7d84; }
+.campo input[type="text"], .campo textarea {
+  width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font: inherit; font-size: 15px;
+}
+.campo textarea { resize: vertical; min-height: 110px; line-height: 1.45; }
+.campo input:focus, .campo textarea:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+.campo [aria-invalid="true"] { border-color: var(--accent); }
+.pie { display: flex; justify-content: space-between; gap: 12px; }
+.ayuda { font-size: 12px; color: #7c7d84; }
+.contador { font-size: 12px; color: #7c7d84; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.contador.excedido { color: var(--accent); font-weight: 600; }
+.error-campo { font-size: 13px; color: #ff8fa3; }
+.error-campo:empty { display: none; }
+
+.con-prefijo {
+  display: flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+}
+.con-prefijo span { padding-left: 12px; color: var(--text-dim); }
+.con-prefijo input[type="text"] { border: 0; padding-left: 4px; }
+.con-prefijo:focus-within { outline: 2px solid var(--text); outline-offset: 1px; }
+.con-prefijo input:focus { outline: none; }
+
+.dos-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.imagen-fila { display: flex; align-items: center; gap: 14px; }
+.imagen-fila > div:last-child { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.miniatura {
+  width: 64px; height: 64px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.miniatura.redonda { border-radius: 50%; }
+.miniatura img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.progreso { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.progreso progress { flex: 1; height: 8px; accent-color: var(--accent); }
+.progreso span { font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+#subir-formulario .acciones { margin-top: 24px; }
+#subir-formulario .mensaje { margin: 16px 0 0; }
+
+/* ---------- Lista estilo Studio ---------- */
+.tabla { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.fila {
+  display: grid; grid-template-columns: minmax(0, 1fr) 140px 110px 170px;
+  align-items: center; gap: 16px; padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+#admin-filas .fila:last-child { border-bottom: 0; }
+#admin-filas .fila:hover { background: var(--surface-2); }
+.fila-cabecera { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .4px; padding-top: 14px; padding-bottom: 14px; }
+.fila > span { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.celda-video { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.miniatura-video {
+  width: 54px; height: 96px; flex-shrink: 0; object-fit: cover;
+  border-radius: 6px; background: var(--surface-2); pointer-events: none;
+}
+.textos { min-width: 0; }
+.titulo { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.descripcion {
+  margin-top: 4px; font-size: 13px; color: var(--text-dim);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.acciones-fila { display: flex; gap: 8px; justify-content: flex-end; }
+.vacio { padding: 32px 20px; text-align: center; color: var(--text-dim); font-size: 14px; }
+
+/* ---------- Detalles del video ---------- */
+#editar-volver { margin-bottom: 6px; }
+.detalles { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+.vista-previa { padding: 16px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 16px; }
+.vista-previa video { width: 100%; aspect-ratio: 9 / 16; max-height: 60vh; object-fit: contain; background: #000; border-radius: 10px; }
+.vista-previa dt { font-size: 12px; color: var(--text-dim); }
+.vista-previa dd { font-size: 13px; margin: 2px 0 10px; word-break: break-all; }
+
+/* ---------- Diálogos ---------- */
+dialog {
+  margin: auto; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); padding: 24px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, .65); }
+dialog h2 { font-size: 18px; margin-bottom: 6px; }
+dialog p[data-texto] { font-size: 15px; line-height: 1.5; margin-bottom: 20px; overflow-wrap: anywhere; }
+dialog .acciones { margin-top: 16px; }
+.lista-videos { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; max-height: 50vh; overflow-y: auto; }
+.opcion-video {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+}
+.opcion-video:hover { background: var(--surface-2); }
+.opcion-video strong { font-size: 14px; overflow-wrap: anywhere; }
+.opcion-video span { font-size: 12px; color: var(--text-dim); }
+
+/* Pantallas de escritorio angostas y tablet en modo escritorio */
+@media (max-width: 1000px) {
+  .fila { grid-template-columns: minmax(0, 1fr) 110px 90px 160px; gap: 12px; padding: 12px 14px; }
+  .detalles { grid-template-columns: minmax(0, 1fr) 220px; }
+}

@@ -48,10 +48,9 @@ class LoginPage {
   }
 
   static mostrarErrorDeArranque(error) {
-    console.error(error); // la causa completa queda en la consola del navegador
     const texto = error instanceof ConfiguracionInvalida
       ? error.message
-      : "No se pudo cargar el panel. Recarga la página; si sigue, revisa la consola del navegador.";
+      : "No se pudo cargar el panel. Recarga la página e intenta de nuevo.";
     document.body.classList.remove("verificando");
     const caja = document.getElementById("error");
     caja.textContent = texto;

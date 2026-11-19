@@ -4,6 +4,7 @@
 class PanelPage {
   #auth;
   #saliendo = false;
+  #administrar = null;
 
   constructor(auth) {
     this.#auth = auth;
@@ -14,10 +15,17 @@ class PanelPage {
       window.location.replace("./");
       return;
     }
+    const repo = new VideoRepositorio(this.#auth.clienteSupabase(), window.CORTO_CONFIG);
+    const dialogos = new Dialogos();
+    const subir = new PestanaSubir(repo, dialogos);
+    this.#administrar = new PestanaAdministrar(repo, dialogos);
+    subir.alSubir(() => this.#administrar.marcarDesactualizada());
+    subir.iniciar();
+    this.#administrar.iniciar();
+
     document.body.classList.remove("verificando");
     this.#auth.alCerrarseSesion(() => { if (!this.#saliendo) window.location.replace("./"); });
     this.#activarPestanas();
-    this.#activarZonaDeSubida();
     document.getElementById("cerrar-sesion").addEventListener("click", async (e) => {
       this.#saliendo = true;
       e.currentTarget.disabled = true;
@@ -32,11 +40,12 @@ class PanelPage {
     const activar = (tab) => {
       tabs.forEach((t) => {
         const activa = t === tab;
-        t.setAttribute("aria-selected", activa);
+        t.setAttribute("aria-selected", String(activa));
         t.tabIndex = activa ? 0 : -1;
         document.getElementById(t.getAttribute("aria-controls")).hidden = !activa;
       });
       tab.focus();
+      if (tab.id === "tab-administrar") this.#administrar.mostrar();
     };
     tabs.forEach((tab, i) => {
       tab.addEventListener("click", () => activar(tab));
@@ -46,33 +55,12 @@ class PanelPage {
       });
     });
   }
-
-  // ---- Explorador de archivos (solo elegir, no sube nada) ----
-  #activarZonaDeSubida() {
-    const zona = document.getElementById("dropzone");
-    const selector = document.getElementById("selector");
-
-    zona.addEventListener("dblclick", () => selector.click());
-    zona.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selector.click(); }
-    });
-
-    // Evitar que el navegador abra el video al soltarlo y salga del panel
-    ["dragenter", "dragover"].forEach((ev) => zona.addEventListener(ev, (e) => { e.preventDefault(); zona.classList.add("over"); }));
-    ["dragleave", "drop"].forEach((ev) => zona.addEventListener(ev, (e) => { e.preventDefault(); zona.classList.remove("over"); }));
-    window.addEventListener("dragover", (e) => e.preventDefault());
-    window.addEventListener("drop", (e) => e.preventDefault());
-  }
 }
 
 protegerContraIframe();
 try {
-  new PanelPage(AdminLogin.desdeConfig()).iniciar().catch((e) => {
-    console.error(e);
-    window.location.replace("./");
-  });
-} catch (e) {
+  new PanelPage(AdminLogin.desdeConfig()).iniciar().catch(() => window.location.replace("./"));
+} catch {
   // No se pudo arrancar: no se muestra el panel; el login explica la causa.
-  console.error(e);
   window.location.replace("./");
 }

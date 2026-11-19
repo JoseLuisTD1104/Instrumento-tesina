@@ -4,15 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>corto · Panel de administrador</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; script-src-elem 'self'; style-src 'self'; style-src-elem 'self'; img-src 'self'; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; script-src-elem 'self'; style-src 'self'; style-src-elem 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="css/panel.css?v=20261119-2">
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="css/panel.css?v=20261119-3">
 </head>
 <body class="verificando">
 
 <header class="topbar">
   <div class="logo">corto<span>.</span></div>
-  <span class="badge">Panel de administrador</span>
   <span class="spacer"></span>
   <button class="btn-salir" type="button" id="cerrar-sesion">Cerrar sesión</button>
 </header>
@@ -24,30 +24,215 @@
     <button class="tab" role="tab" id="tab-analiticas" aria-controls="panel-analiticas" aria-selected="false" tabindex="-1">Analíticas</button>
   </div>
 
+  <!-- ============ Subir videos ============ -->
   <section class="panel" id="panel-subir" role="tabpanel" aria-labelledby="tab-subir" tabindex="0">
-    <div class="card">
+    <p class="mensaje" id="subir-resultado" role="status" hidden></p>
+
+    <div class="card" id="subir-inicio">
       <div class="dropzone" id="dropzone" role="button" tabindex="0"
-           aria-label="Área para soltar videos. Haz doble clic o presiona Enter para buscar en tu dispositivo.">
+           aria-label="Área para soltar un video. Haz doble clic o presiona Enter para buscarlo en tu dispositivo.">
         <svg viewBox="0 0 120 84" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M32 76h58a22 22 0 0 0 3-43.8A30 30 0 0 0 36.5 22 27 27 0 0 0 32 76z"/>
           <circle cx="60" cy="50" r="14"/>
           <path d="M60 58V42M53 48l7-7 7 7"/>
         </svg>
-        <p class="dz-title">Arrastra y suelta<br>tus videos aquí</p>
-        <p class="dz-sub">o haz <strong>doble clic</strong> para buscarlos en tu dispositivo</p>
-        <p class="dz-hint">Solo archivos de video</p>
+        <p class="dz-title">Arrastra y suelta<br>tu video aquí</p>
+        <p class="dz-sub">o haz <strong>doble clic</strong> para buscarlo en tu dispositivo</p>
+        <p class="dz-hint">MP4, WebM o MOV · máximo 50 MB</p>
       </div>
-      <input class="visually-hidden" type="file" id="selector" accept="video/*" multiple tabindex="-1" aria-hidden="true">
+      <input class="visually-hidden" type="file" id="selector" accept="video/mp4,video/webm,video/quicktime" tabindex="-1" aria-hidden="true">
+    </div>
+
+    <div class="card card-form" id="subir-formulario" hidden>
+      <div class="encabezado">
+        <div>
+          <h2>Detalles del nuevo video</h2>
+          <p class="archivo" id="subir-archivo"></p>
+        </div>
+        <button class="btn-sec" type="button" id="subir-duplicar">Duplicar datos de un video anterior</button>
+      </div>
+      <div id="subir-campos"></div>
+      <div class="progreso" id="subir-progreso" hidden>
+        <progress max="100" value="0" aria-label="Progreso de la subida"></progress>
+        <span data-porcentaje>0%</span>
+      </div>
+      <p class="mensaje" id="subir-mensaje" role="status" hidden></p>
+      <div class="acciones">
+        <button class="btn-sec" type="button" id="subir-cancelar">Cancelar</button>
+        <button class="btn-pri" type="button" id="subir-enviar">Subir video</button>
+      </div>
     </div>
   </section>
 
-  <section class="panel" id="panel-administrar" role="tabpanel" aria-labelledby="tab-administrar" tabindex="0" hidden></section>
+  <!-- ============ Administrar videos ============ -->
+  <section class="panel" id="panel-administrar" role="tabpanel" aria-labelledby="tab-administrar" tabindex="0" hidden>
+    <div id="admin-lista">
+      <div class="encabezado">
+        <div>
+          <h2>Videos subidos</h2>
+          <p class="archivo" id="admin-conteo"></p>
+        </div>
+        <button class="btn-sec" type="button" id="admin-recargar">Recargar</button>
+      </div>
+      <p class="mensaje" id="admin-mensaje" role="status" hidden></p>
+      <div class="tabla">
+        <div class="fila fila-cabecera" aria-hidden="true">
+          <span>Video</span><span>Usuario</span><span>Fecha</span><span>Acciones</span>
+        </div>
+        <div id="admin-filas"></div>
+        <p class="vacio" id="admin-vacio" hidden>Todavía no hay videos subidos.</p>
+      </div>
+    </div>
+
+    <div id="admin-editar" hidden>
+      <div class="encabezado">
+        <div>
+          <button class="btn-link" type="button" id="editar-volver">← Volver a la lista</button>
+          <h2>Detalles del video</h2>
+        </div>
+        <div class="acciones">
+          <button class="btn-sec" type="button" id="editar-deshacer" disabled>Deshacer cambios</button>
+          <button class="btn-pri" type="button" id="editar-guardar" disabled>Guardar</button>
+        </div>
+      </div>
+      <p class="mensaje" id="editar-mensaje" role="status" hidden></p>
+      <div class="detalles">
+        <div class="card card-form" id="editar-campos"></div>
+        <aside class="card vista-previa">
+          <video id="editar-video" controls preload="metadata" playsinline></video>
+          <dl>
+            <dt>Archivo de video</dt><dd id="editar-ruta"></dd>
+            <dt>Subido</dt><dd id="editar-fecha"></dd>
+          </dl>
+          <p class="ayuda">El archivo de video no se puede reemplazar. Para cambiarlo, sube un video nuevo.</p>
+        </aside>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="panel-analiticas" role="tabpanel" aria-labelledby="tab-analiticas" tabindex="0" hidden></section>
 </main>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-2"></script>
-<script src="config.js?v=20261119-2"></script>
-<script src="js/admin-login.js?v=20261119-2"></script>
-<script src="js/panel.js?v=20261119-2"></script>
+<!-- ============ Diálogos ============ -->
+<dialog id="dialogo-confirmar" aria-labelledby="dialogo-confirmar-texto">
+  <form method="dialog">
+    <p id="dialogo-confirmar-texto" data-texto></p>
+    <div class="acciones">
+      <button class="btn-sec" value="cancelar">Cancelar</button>
+      <button class="btn-pri" value="aceptar" data-aceptar>Aceptar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogo-duplicar" aria-labelledby="dialogo-duplicar-titulo">
+  <form method="dialog">
+    <h2 id="dialogo-duplicar-titulo">Duplicar datos de un video anterior</h2>
+    <p class="ayuda">Se copian todos los datos excepto el archivo de video. Las imágenes se reutilizan sin volver a subirlas.</p>
+    <div class="lista-videos" data-lista></div>
+    <p class="vacio" data-vacio hidden>Todavía no hay videos subidos.</p>
+    <div class="acciones">
+      <button class="btn-sec" value="">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Plantillas ============ -->
+<template id="tpl-formulario">
+  <fieldset class="form-video">
+    <legend class="visually-hidden">Datos del video</legend>
+
+    <div class="campo">
+      <label data-para="titulo">Título <span class="req">(obligatorio)</span></label>
+      <input data-campo="titulo" type="text" maxlength="150" required autocomplete="off">
+      <div class="pie"><p class="ayuda">Solo interno: no aparece en el feed.</p><span class="contador" data-contador="titulo"></span></div>
+      <p class="error-campo" data-error="titulo" role="alert"></p>
+    </div>
+
+    <div class="campo">
+      <label data-para="descripcion">Descripción</label>
+      <textarea data-campo="descripcion" rows="5" maxlength="2200"></textarea>
+      <div class="pie"><p class="ayuda">Escribe los hashtags dentro de la descripción.</p><span class="contador" data-contador="descripcion"></span></div>
+      <p class="error-campo" data-error="descripcion" role="alert"></p>
+    </div>
+
+    <div class="campo">
+      <label data-para="usuario">@usuario del creador</label>
+      <div class="con-prefijo"><span aria-hidden="true">@</span><input data-campo="usuario" type="text" maxlength="31" autocomplete="off" spellcheck="false"></div>
+      <div class="pie"><p class="ayuda">Letras sin acentos, números, punto y guion bajo.</p><span class="contador" data-contador="usuario"></span></div>
+      <p class="error-campo" data-error="usuario" role="alert"></p>
+    </div>
+
+    <div class="dos-columnas">
+      <div class="campo campo-imagen">
+        <span class="etiqueta">Foto de perfil</span>
+        <div class="imagen-fila">
+          <div class="miniatura redonda"><img data-vista="foto" alt="Foto de perfil actual" hidden></div>
+          <div>
+            <label class="btn-sec btn-archivo">Elegir imagen<input class="visually-hidden" type="file" data-archivo="foto" accept="image/png,image/jpeg,image/webp"></label>
+            <button class="btn-link" type="button" data-quitar="foto">Quitar</button>
+            <p class="ayuda" data-estado="foto"></p>
+          </div>
+        </div>
+        <p class="ayuda">PNG, JPEG o WebP · máximo 2 MB.</p>
+        <p class="error-campo" data-error="foto" role="alert"></p>
+      </div>
+
+      <div class="campo campo-imagen">
+        <span class="etiqueta">Portada del disco del sonido</span>
+        <div class="imagen-fila">
+          <div class="miniatura"><img data-vista="portada" alt="Portada actual del disco" hidden></div>
+          <div>
+            <label class="btn-sec btn-archivo">Elegir imagen<input class="visually-hidden" type="file" data-archivo="portada" accept="image/png,image/jpeg,image/webp"></label>
+            <button class="btn-link" type="button" data-quitar="portada">Quitar</button>
+            <p class="ayuda" data-estado="portada"></p>
+          </div>
+        </div>
+        <p class="ayuda">PNG, JPEG o WebP · máximo 2 MB.</p>
+        <p class="error-campo" data-error="portada" role="alert"></p>
+      </div>
+    </div>
+
+    <div class="dos-columnas">
+      <div class="campo">
+        <label data-para="sonido_nombre">Nombre del sonido</label>
+        <input data-campo="sonido_nombre" type="text" maxlength="100" autocomplete="off">
+        <div class="pie"><p class="ayuda">Ej.: sonido original</p><span class="contador" data-contador="sonido_nombre"></span></div>
+        <p class="error-campo" data-error="sonido_nombre" role="alert"></p>
+      </div>
+      <div class="campo">
+        <label data-para="sonido_autor">Autor del sonido</label>
+        <input data-campo="sonido_autor" type="text" maxlength="100" autocomplete="off">
+        <div class="pie"><p class="ayuda"></p><span class="contador" data-contador="sonido_autor"></span></div>
+        <p class="error-campo" data-error="sonido_autor" role="alert"></p>
+      </div>
+    </div>
+  </fieldset>
+</template>
+
+<template id="tpl-fila">
+  <div class="fila">
+    <div class="celda-video">
+      <video class="miniatura-video" data-miniatura preload="metadata" muted playsinline tabindex="-1" aria-hidden="true"></video>
+      <div class="textos">
+        <p class="titulo" data-titulo></p>
+        <p class="descripcion" data-descripcion></p>
+      </div>
+    </div>
+    <span data-usuario></span>
+    <span data-fecha></span>
+    <div class="acciones-fila">
+      <button class="btn-sec" type="button" data-editar>Editar</button>
+      <button class="btn-peligro" type="button" data-borrar>Borrar</button>
+    </div>
+  </div>
+</template>
+
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-3"></script>
+<script src="config.js?v=20261119-3"></script>
+<script src="js/admin-login.js?v=20261119-3"></script>
+<script src="js/videos.js?v=20261119-3"></script>
+<script src="js/formulario-video.js?v=20261119-3"></script>
+<script src="js/pestanas-videos.js?v=20261119-3"></script>
+<script src="js/panel.js?v=20261119-3"></script>
 </body>
 </html>

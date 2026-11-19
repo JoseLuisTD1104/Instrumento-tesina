@@ -120,6 +120,11 @@ class AdminLogin {
     }
   }
 
+  /** Para el resto del panel: cliente de Supabase con la sesión del administrador. */
+  clienteSupabase() {
+    return this.#cliente;
+  }
+
   /** Para el resto del panel: avisa cuando la sesión termina (vence, se revoca o se cierra). */
   alCerrarseSesion(callback) {
     this.#cliente.auth.onAuthStateChange((evento, sesion) => {
