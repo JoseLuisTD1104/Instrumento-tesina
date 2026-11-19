@@ -2,11 +2,6 @@
 
 /** Iniciales y color del círculo de un comentario sin foto. */
 class AvatarIniciales {
-  // Todos con contraste de al menos 4.5:1 contra texto blanco.
-  static PALETA = Object.freeze([
-    "#C2185B", "#AD1457", "#7B1FA2", "#6A1B9A", "#512DA8", "#303F9F",
-    "#1565C0", "#00695C", "#2E7D32", "#BF360C", "#5D4037", "#455A64",
-  ]);
   static PATRON_COLOR = /^#[0-9a-f]{6}$/i;
 
   /** usuario.uno → UU; ana → AN. */
@@ -20,13 +15,12 @@ class AvatarIniciales {
   }
 
   static colorAlAzar() {
-    const i = crypto.getRandomValues(new Uint32Array(1))[0] % AvatarIniciales.PALETA.length;
-    return AvatarIniciales.PALETA[i];
+    return PaletaLegible.alAzar();
   }
 
   /** Un color guardado solo se usa si es un hex válido; si no, uno fijo de la paleta. */
   static colorSeguro(color) {
-    return AvatarIniciales.PATRON_COLOR.test(color ?? "") ? color : AvatarIniciales.PALETA[AvatarIniciales.PALETA.length - 1];
+    return AvatarIniciales.PATRON_COLOR.test(color ?? "") ? color : PaletaLegible.COLORES[PaletaLegible.COLORES.length - 1];
   }
 
   /** Foto si existe; si no (o si falla al cargar), círculo con iniciales. */

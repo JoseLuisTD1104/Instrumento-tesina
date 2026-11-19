@@ -135,7 +135,7 @@ class PestanaSubir {
       PanelFormato.mensaje(this.#mensaje, "Revisa los campos marcados.", "error");
       return;
     }
-    const { textos, imagenes } = this.#form.leer();
+    const { textos, imagenes, enlace } = this.#form.leer();
     const video = this.#archivo;
 
     this.#bloquear(true);
@@ -157,7 +157,7 @@ class PestanaSubir {
       subidos.push(["videos", rutaVideo]);
 
       const columnasImagen = await subirImagenesDelFormulario(this.#repo, imagenes, subidos, progreso);
-      await this.#repo.crear({ ...textos, ...columnasImagen, ruta_archivo: rutaVideo });
+      await this.#repo.crear({ ...textos, ...columnasImagen, ...enlace, ruta_archivo: rutaVideo });
 
       this.#mostrarProgreso(100);
       this.#volverAlInicio();
@@ -354,7 +354,7 @@ class PestanaAdministrar {
       return;
     }
     const original = this.#editando;
-    const { textos, imagenes } = this.#form.leer();
+    const { textos, imagenes, enlace } = this.#form.leer();
     this.#ocupado = true;
     this.#form.deshabilitar(true);
     this.#actualizarBotones();
@@ -362,7 +362,7 @@ class PestanaAdministrar {
     const subidos = [];
     try {
       const columnasImagen = await subirImagenesDelFormulario(this.#repo, imagenes, subidos, () => {});
-      const actualizado = await this.#repo.actualizar(original.id, { ...textos, ...columnasImagen });
+      const actualizado = await this.#repo.actualizar(original.id, { ...textos, ...columnasImagen, ...enlace });
 
       // Imágenes reemplazadas o quitadas: se borran solo si ningún otro video las usa.
       let pendientes = 0;

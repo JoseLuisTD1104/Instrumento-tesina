@@ -105,9 +105,72 @@ class ValidadorVideo {
   }
 }
 
+/**
+ * Reglas del botón de enlace de un video. Reflejan las restricciones de la tabla public.videos:
+ * con enlace_activo, texto (1–30), URL (https://, máx. 500, sin espacios, comillas ni < >) y color (#RRGGBB)
+ * son obligatorios.
+ */
+class ValidadorEnlace {
+  static MAX_TEXTO = 30;
+  static MAX_URL = 500;
+  static PATRON_COLOR = /^#[0-9A-F]{6}$/i;
+  static CARACTERES_PROHIBIDOS = /[\s"'<>]/;
+
+  /** Limpia lo escrito en el formulario. El color se guarda en mayúsculas (#RRGGBB). */
+  static normalizar({ activo, texto, url, color }) {
+    const limpio = (v) => String(v ?? "").replace(/\u0000/g, "").trim();
+    const hex = limpio(color).toUpperCase();
+    return { activo: Boolean(activo), texto: limpio(texto), url: limpio(url), color: hex };
+  }
+
+  static esColor(color) {
+    return ValidadorEnlace.PATRON_COLOR.test(color ?? "");
+  }
+
+  /** true si la URL es https://, válida para new URL() y cumple las reglas de la base. */
+  static esUrlSegura(url) {
+    if (typeof url !== "string" || !url.startsWith("https://")) return false;
+    if (url.length > ValidadorEnlace.MAX_URL || ValidadorEnlace.CARACTERES_PROHIBIDOS.test(url)) return false;
+    try {
+      const u = new URL(url);
+      return u.protocol === "https:" && Boolean(u.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Errores de cada campo, calculados siempre; solo se exigen con el botón activo. */
+  static errores({ texto, url, color }) {
+    const errores = {};
+    const n = ValidadorVideo.largo(texto);
+    if (n === 0) errores.texto = "Escribe el texto del botón.";
+    else if (n > ValidadorEnlace.MAX_TEXTO) errores.texto = `El texto no puede pasar de ${ValidadorEnlace.MAX_TEXTO} caracteres (tiene ${n}).`;
+    if (!url) errores.url = "Escribe la URL del botón.";
+    else if (url.length > ValidadorEnlace.MAX_URL) errores.url = `La URL no puede pasar de ${ValidadorEnlace.MAX_URL} caracteres.`;
+    else if (!ValidadorEnlace.esUrlSegura(url)) errores.url = "La URL debe ser válida, empezar con https:// y no tener espacios, comillas ni < >.";
+    if (!ValidadorEnlace.esColor(color)) errores.color = "Elige un color en formato #RRGGBB.";
+    return errores;
+  }
+
+  /**
+   * Columnas para guardar. Con el botón apagado se conservan texto, URL y color para no perderlos,
+   * pero solo los que cumplen las reglas de la base (los demás se guardan vacíos).
+   */
+  static aColumnas(datos) {
+    const errores = ValidadorEnlace.errores(datos);
+    const conservar = (campo, valor) => (!errores[campo] ? valor : null);
+    return {
+      enlace_activo: datos.activo,
+      enlace_texto: conservar("texto", datos.texto),
+      enlace_url: conservar("url", datos.url),
+      enlace_color: conservar("color", datos.color),
+    };
+  }
+}
+
 /** Acceso a la tabla public.videos y a los buckets "videos" e "imagenes". */
 class VideoRepositorio {
-  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado,publicado_en,me_gusta_num,comentarios_num,guardados_num";
+  static COLUMNAS = "id,titulo,descripcion,ruta_archivo,creado_en,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado,publicado_en,me_gusta_num,comentarios_num,guardados_num,enlace_activo,enlace_texto,enlace_url,enlace_color";
   static SEGUNDOS_FIRMA = 600; // 10 minutos: miniaturas y vista previa del panel
   static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
 

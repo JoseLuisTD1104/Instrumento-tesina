@@ -7,7 +7,7 @@
  */
 
 class FeedRepositorio {
-  static COLUMNAS = "id,descripcion,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado_en";
+  static COLUMNAS = "id,descripcion,usuario,foto_perfil_ruta,sonido_nombre,sonido_autor,portada_sonido_ruta,publicado_en,enlace_activo,enlace_texto,enlace_url,enlace_color";
   static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
 
   #sb;
@@ -57,6 +57,116 @@ class FeedRepositorio {
   }
 }
 
+/**
+ * Botón de enlace estilo anuncio de un video. Aparece según el tiempo del propio video (currentTime):
+ * invisible y sin poder pulsarse antes del segundo 8, degradado de opacidad del 8 al 10, y desde el 10
+ * completo y pulsable. Completo, se queda visible el resto del video y en el bucle. No registra clics.
+ */
+class BarraDeEnlace {
+  static INICIO_S = 8;
+  static FIN_S = 10;
+  static PATRON_COLOR = /^#[0-9A-F]{6}$/i;
+  static CARACTERES_PROHIBIDOS = /[\s"'<>]/;
+
+  #elemento;
+  #video;
+  #opacidad = 0;
+  #completa = false;
+  #ultimoTiempo = 0;
+  #cuadro = null;
+
+  /** Devuelve la barra, o null si el video no tiene un enlace activo con texto y URL https:// válidos. */
+  static crear(datos, video, elemento) {
+    if (datos?.enlace_activo !== true) return null;
+    const texto = String(datos.enlace_texto ?? "").trim();
+    const url = String(datos.enlace_url ?? "").trim();
+    if (!texto || !BarraDeEnlace.esUrlSegura(url)) return null;
+    return new BarraDeEnlace(texto, url, datos.enlace_color, video, elemento);
+  }
+
+  static esUrlSegura(url) {
+    if (!url.startsWith("https://") || url.length > 500 || BarraDeEnlace.CARACTERES_PROHIBIDOS.test(url)) return false;
+    try {
+      const u = new URL(url);
+      return u.protocol === "https:" && Boolean(u.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  /** El color de cada video si es #RRGGBB; si no, el color de acento de corto. */
+  static colorSeguro(color) {
+    if (BarraDeEnlace.PATRON_COLOR.test(color ?? "")) return color;
+    return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff3b5c";
+  }
+
+  constructor(texto, url, color, video, elemento) {
+    this.#elemento = elemento;
+    this.#video = video;
+    elemento.href = url;
+    elemento.target = "_blank";
+    elemento.rel = "noopener noreferrer";
+    elemento.referrerPolicy = "no-referrer";
+    elemento.querySelector("[data-enlace-texto]").textContent = texto; // nunca innerHTML
+    elemento.style.backgroundColor = BarraDeEnlace.colorSeguro(color);
+    this.#bloquear();
+    elemento.hidden = false;
+
+    // Mientras el video avanza se anima cuadro a cuadro; en pausa, la aparición también se detiene.
+    video.addEventListener("play", () => this.#animar());
+    video.addEventListener("pause", () => this.#detener());
+    for (const evento of ["timeupdate", "seeked", "loadedmetadata"]) video.addEventListener(evento, () => this.#actualizar());
+  }
+
+  #animar() {
+    this.#detener();
+    const paso = () => {
+      this.#actualizar();
+      if (!this.#completa && !this.#video.paused) this.#cuadro = requestAnimationFrame(paso);
+    };
+    this.#cuadro = requestAnimationFrame(paso);
+  }
+
+  #detener() {
+    if (this.#cuadro !== null) cancelAnimationFrame(this.#cuadro);
+    this.#cuadro = null;
+  }
+
+  #actualizar() {
+    if (this.#completa) return;
+    const t = this.#video.currentTime || 0;
+    // Un video de entre 8 y 10 s nunca llega al segundo 10: al volver a empezar se da por completo.
+    if (t + 0.5 < this.#ultimoTiempo && this.#ultimoTiempo >= BarraDeEnlace.INICIO_S) {
+      this.#completar();
+      return;
+    }
+    this.#ultimoTiempo = t;
+    const avance = (t - BarraDeEnlace.INICIO_S) / (BarraDeEnlace.FIN_S - BarraDeEnlace.INICIO_S);
+    if (avance >= 1) {
+      this.#completar();
+      return;
+    }
+    this.#opacidad = Math.max(this.#opacidad, Math.min(Math.max(avance, 0), 1));
+    this.#elemento.style.opacity = String(this.#opacidad);
+  }
+
+  #bloquear() {
+    this.#elemento.style.opacity = "0";
+    this.#elemento.classList.remove("activa");
+    this.#elemento.tabIndex = -1;
+    this.#elemento.setAttribute("aria-hidden", "true");
+  }
+
+  #completar() {
+    this.#completa = true;
+    this.#detener();
+    this.#elemento.style.opacity = "1";
+    this.#elemento.classList.add("activa");
+    this.#elemento.tabIndex = 0;
+    this.#elemento.removeAttribute("aria-hidden");
+  }
+}
+
 /** Un video del feed: pide su URL firmada, la renueva al caducar y bloquea menús y descargas. */
 class VideoDelFeed {
   static MARGEN_MS = 20_000; // se pide una URL nueva si a la actual le quedan menos de 20 s
@@ -83,6 +193,7 @@ class VideoDelFeed {
     this.#aviso = this.raiz.querySelector("[data-aviso]");
     this.#progreso = this.raiz.querySelector("[data-progreso]");
     this.#pintarDatos();
+    BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"));
     this.#protegerVideo();
     this.#conectarControles();
   }

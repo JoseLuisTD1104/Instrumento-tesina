@@ -1,5 +1,120 @@
 "use strict";
 
+/** Colores con contraste de al menos 4.5:1 contra texto blanco (iniciales de comentarios y botón de enlace). */
+class PaletaLegible {
+  static COLORES = Object.freeze([
+    "#C2185B", "#AD1457", "#7B1FA2", "#6A1B9A", "#512DA8", "#303F9F",
+    "#1565C0", "#00695C", "#2E7D32", "#BF360C", "#5D4037", "#455A64",
+  ]);
+
+  static alAzar() {
+    const i = crypto.getRandomValues(new Uint32Array(1))[0] % PaletaLegible.COLORES.length;
+    return PaletaLegible.COLORES[i];
+  }
+}
+
+/** Sección "Botón de enlace" del formulario: interruptor, texto, URL, color y vista previa. */
+class EditorDeEnlace {
+  #raiz;
+  #activo;
+  #campos;
+  #texto;
+  #url;
+  #selector;
+  #hex;
+  #contador;
+  #previa;
+  #previaTexto;
+  #color = "";
+  #alCambiar;
+
+  constructor(raiz, prefijo, alCambiar) {
+    this.#raiz = raiz;
+    this.#alCambiar = alCambiar;
+    const q = (sel) => raiz.querySelector(sel);
+    this.#activo = q("[data-enlace-activo]");
+    this.#campos = q("[data-enlace-campos]");
+    this.#texto = q("[data-enlace-texto]");
+    this.#url = q("[data-enlace-url]");
+    this.#selector = q("[data-enlace-color]");
+    this.#hex = q("[data-enlace-hex]");
+    this.#contador = q("[data-enlace-contador]");
+    this.#previa = q("[data-enlace-previa]");
+    this.#previaTexto = q("[data-enlace-previa-texto]");
+
+    for (const [el, sufijo] of [[this.#activo, "activo"], [this.#texto, "texto"], [this.#url, "url"], [this.#selector, "color"]]) {
+      el.id = `${prefijo}-enlace-${sufijo}`;
+      const etiqueta = q(`label[data-para-enlace="${sufijo}"]`);
+      if (etiqueta) etiqueta.htmlFor = el.id;
+    }
+
+    this.#activo.addEventListener("change", () => {
+      // Al activarlo por primera vez, el color empieza aleatorio.
+      if (this.#activo.checked && !ValidadorEnlace.esColor(this.#color)) this.#color = PaletaLegible.alAzar();
+      this.#refrescar();
+      this.#alCambiar();
+    });
+    this.#texto.addEventListener("input", () => { this.#error("texto", ""); this.#refrescar(); this.#alCambiar(); });
+    this.#url.addEventListener("input", () => { this.#error("url", ""); this.#alCambiar(); });
+    this.#selector.addEventListener("input", () => { this.#ponerColor(this.#selector.value); });
+    q("[data-enlace-aleatorio]").addEventListener("click", () => this.#ponerColor(PaletaLegible.alAzar()));
+  }
+
+  llenar(video) {
+    this.#activo.checked = Boolean(video.enlace_activo);
+    this.#texto.value = video.enlace_texto ?? "";
+    this.#url.value = video.enlace_url ?? "";
+    this.#color = ValidadorEnlace.esColor(video.enlace_color) ? video.enlace_color.toUpperCase() : "";
+    for (const campo of ["texto", "url", "color"]) this.#error(campo, "");
+    this.#refrescar();
+  }
+
+  /** Datos normalizados: { activo, texto, url, color }. */
+  leer() {
+    return ValidadorEnlace.normalizar({
+      activo: this.#activo.checked, texto: this.#texto.value, url: this.#url.value, color: this.#color,
+    });
+  }
+
+  /** Muestra los errores solo si el botón está activo. Devuelve el primer campo con error o null. */
+  validar() {
+    const datos = this.leer();
+    const errores = datos.activo ? ValidadorEnlace.errores(datos) : {};
+    for (const campo of ["texto", "url", "color"]) this.#error(campo, errores[campo] ?? "");
+    if (errores.texto) return this.#texto;
+    if (errores.url) return this.#url;
+    if (errores.color) return this.#selector;
+    return null;
+  }
+
+  #ponerColor(color) {
+    this.#color = String(color).toUpperCase();
+    this.#error("color", "");
+    this.#refrescar();
+    this.#alCambiar();
+  }
+
+  #refrescar() {
+    const activo = this.#activo.checked;
+    this.#campos.hidden = !activo;
+    const n = ValidadorVideo.largo(this.#texto.value.trim());
+    this.#contador.textContent = `${n}/${ValidadorEnlace.MAX_TEXTO}`;
+    this.#contador.classList.toggle("excedido", n > ValidadorEnlace.MAX_TEXTO);
+    const color = ValidadorEnlace.esColor(this.#color) ? this.#color : "";
+    if (color) this.#selector.value = color.toLowerCase(); // input type=color solo acepta minúsculas
+    this.#hex.textContent = color || "Sin color";
+    this.#previa.style.backgroundColor = color || "";
+    this.#previaTexto.textContent = this.#texto.value.trim() || "Texto del botón";
+  }
+
+  #error(campo, texto) {
+    const caja = this.#raiz.querySelector(`[data-error-enlace="${campo}"]`);
+    if (caja) caja.textContent = texto;
+    const el = { texto: this.#texto, url: this.#url, color: this.#selector }[campo];
+    el.setAttribute("aria-invalid", texto ? "true" : "false");
+  }
+}
+
 /** Campos de un video. Se usa igual al subir y al editar. Todo texto se muestra con textContent. */
 class FormularioVideo {
   static TEXTOS = ["titulo", "descripcion", "usuario", "sonido_nombre", "sonido_autor"];
@@ -13,6 +128,7 @@ class FormularioVideo {
   #videoOriginal = {};
   #instantaneaOriginal = "";
   #imagenes = { foto: { ruta: null, archivo: null }, portada: { ruta: null, archivo: null } };
+  #enlace;
   #alCambiar = () => {};
 
   constructor(contenedor, repo, prefijo) {
@@ -36,6 +152,7 @@ class FormularioVideo {
         this.#alCambiar();
       });
     }
+    this.#enlace = new EditorDeEnlace(this.#raiz.querySelector("[data-enlace]"), prefijo, () => this.#alCambiar());
     this.llenar({});
   }
 
@@ -54,6 +171,7 @@ class FormularioVideo {
       this.#refrescarImagen(clave);
       this.#limpiarError(clave);
     }
+    this.#enlace.llenar(video);
     this.#instantaneaOriginal = this.#instantanea();
     this.#alCambiar();
   }
@@ -62,13 +180,14 @@ class FormularioVideo {
 
   haCambiado() { return this.#instantanea() !== this.#instantaneaOriginal; }
 
-  /** { textos normalizados, imagenes: { foto: {ruta, archivo}, portada: {...} } } */
+  /** { textos normalizados, imagenes: { foto: {ruta, archivo}, portada: {...} }, enlace: columnas enlace_* } */
   leer() {
     const crudo = {};
     for (const campo of FormularioVideo.TEXTOS) crudo[campo] = this.#campo(campo).value;
     return {
       textos: ValidadorVideo.normalizar(crudo),
       imagenes: { foto: { ...this.#imagenes.foto }, portada: { ...this.#imagenes.portada } },
+      enlace: ValidadorEnlace.aColumnas(this.#enlace.leer()),
     };
   }
 
@@ -77,8 +196,10 @@ class FormularioVideo {
     const errores = ValidadorVideo.validarTextos(this.leer().textos);
     for (const campo of FormularioVideo.TEXTOS) this.#mostrarError(campo, errores[campo] ?? "");
     const primero = FormularioVideo.TEXTOS.find((c) => errores[c]);
+    const campoEnlace = this.#enlace.validar();
     if (primero) this.#campo(primero).focus();
-    return !primero;
+    else if (campoEnlace) campoEnlace.focus();
+    return !primero && !campoEnlace;
   }
 
   deshabilitar(si) { this.#raiz.disabled = si; }
@@ -93,7 +214,7 @@ class FormularioVideo {
     const img = Object.fromEntries(Object.entries(this.#imagenes).map(([k, v]) => [
       k, { ruta: v.ruta, archivo: v.archivo ? `${v.archivo.name}|${v.archivo.size}|${v.archivo.lastModified}` : null },
     ]));
-    return JSON.stringify({ textos, img });
+    return JSON.stringify({ textos, img, enlace: this.#enlace.leer() });
   }
 
   #actualizarContador(campo) {

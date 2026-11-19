@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261119-9">
+<link rel="stylesheet" href="css/panel.css?v=20261119-10">
 </head>
 <body class="verificando">
 
@@ -322,6 +322,51 @@
         <p class="error-campo" data-error="sonido_autor" role="alert"></p>
       </div>
     </div>
+
+    <div class="enlace" data-enlace>
+      <div class="enlace-cabecera">
+        <div>
+          <span class="etiqueta">Botón de enlace</span>
+          <p class="ayuda">Barra estilo anuncio que aparece en el feed del segundo 8 al 10 del video.</p>
+        </div>
+        <label class="interruptor" data-para-enlace="activo">
+          <input type="checkbox" role="switch" data-enlace-activo>
+          <span class="pista" aria-hidden="true"></span>
+          <span>Activar</span>
+        </label>
+      </div>
+
+      <div class="enlace-campos" data-enlace-campos hidden>
+        <div class="campo">
+          <label data-para-enlace="texto">Texto del botón</label>
+          <input type="text" maxlength="30" autocomplete="off" data-enlace-texto>
+          <div class="pie"><p class="ayuda">Ej.: Regístrate</p><span class="contador" data-enlace-contador></span></div>
+          <p class="error-campo" data-error-enlace="texto" role="alert"></p>
+        </div>
+        <div class="campo">
+          <label data-para-enlace="url">URL</label>
+          <input type="text" inputmode="url" maxlength="500" autocomplete="off" spellcheck="false" placeholder="https://" data-enlace-url>
+          <p class="ayuda">Debe empezar con https://</p>
+          <p class="error-campo" data-error-enlace="url" role="alert"></p>
+        </div>
+        <div class="campo">
+          <label data-para-enlace="color">Color</label>
+          <div class="color-fila">
+            <input type="color" data-enlace-color>
+            <span class="color-hex" data-enlace-hex></span>
+            <button class="btn-sec" type="button" data-enlace-aleatorio>Aleatorio</button>
+          </div>
+          <p class="error-campo" data-error-enlace="color" role="alert"></p>
+        </div>
+        <div class="campo">
+          <span class="etiqueta">Vista previa</span>
+          <div class="barra-enlace-previa" data-enlace-previa aria-hidden="true">
+            <span data-enlace-previa-texto></span>
+            <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
   </fieldset>
 </template>
 
@@ -390,14 +435,14 @@
   </li>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261119-9"></script>
-<script src="config.js?v=20261119-9"></script>
-<script src="js/admin-login.js?v=20261119-9"></script>
-<script src="js/sesion-segura.js?v=20261119-9"></script>
-<script src="js/videos.js?v=20261119-9"></script>
-<script src="js/formulario-video.js?v=20261119-9"></script>
-<script src="js/pestanas-videos.js?v=20261119-9"></script>
-<script src="js/pestana-comentarios.js?v=20261119-9"></script>
-<script src="js/panel.js?v=20261119-9"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261119-10"></script>
+<script src="config.js?v=20261119-10"></script>
+<script src="js/admin-login.js?v=20261119-10"></script>
+<script src="js/sesion-segura.js?v=20261119-10"></script>
+<script src="js/videos.js?v=20261119-10"></script>
+<script src="js/formulario-video.js?v=20261119-10"></script>
+<script src="js/pestanas-videos.js?v=20261119-10"></script>
+<script src="js/pestana-comentarios.js?v=20261119-10"></script>
+<script src="js/panel.js?v=20261119-10"></script>
 </body>
 </html>
