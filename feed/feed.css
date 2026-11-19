@@ -98,19 +98,24 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   padding: 64px 16px 20px;
   background: linear-gradient(transparent, rgba(0,0,0,.75));
 }
-/* Botón de enlace estilo anuncio: a lo ancho del video, encima de @usuario y descripción.
+/* Botón de enlace estilo anuncio: discreto, entre la descripción y la línea del sonido.
+   Ancho según su texto (máx. el bloque de información) y una sola línea con puntos suspensivos.
    Empieza invisible y sin poder pulsarse; feed.js lo hace aparecer del segundo 8 al 10. */
 .barra-enlace {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 0 -16px 12px; padding: 12px 16px; min-height: 46px;
+  display: flex; align-items: center; gap: 0.3em;
+  width: fit-content; max-width: 100%; min-width: 0;
+  height: 2.35em;                                    /* ≈ 32 px con texto de 13.5 px */
+  margin-top: 8px; padding: 0 0.5em 0 0.85em;
+  border-radius: 0.6em;
   background: var(--accent); color: #fff; text-decoration: none;
-  font-size: 15px; font-weight: 600;
+  font-size: clamp(12.5px, 0.8rem + 0.15vw, 14px); font-weight: 600; line-height: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
   opacity: 0; pointer-events: none;
 }
 .barra-enlace.activa { pointer-events: auto; cursor: pointer; }
-.barra-enlace span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barra-enlace svg { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.barra-enlace:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
+.barra-enlace span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-enlace svg { width: 1.15em; height: 1.15em; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.barra-enlace:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .author { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; border: 2px solid #fff; flex-shrink: 0; }
 .username { font-weight: 700; font-size: 15px; }
@@ -208,8 +213,6 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
   /* Texto abajo, sin chocar con la columna de botones */
   .overlay { padding: 72px 72px calc(18px + env(safe-area-inset-bottom)) 14px; }
-  /* En móvil la barra termina antes de la columna de botones para no taparlos */
-  .barra-enlace { margin: 0 0 12px -14px; padding-left: 14px; }
   .caption { font-size: 14px; }
 
   .player-top { top: 10px; right: 10px; }
