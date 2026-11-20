@@ -30,7 +30,9 @@ class PanelPage {
     subir.iniciar();
     this.#administrar.iniciar();
     this.#comentarios.iniciar();
-    this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo(this.#auth.clienteSupabase()), dialogos);
+    const clienteCodigo = new ClienteCodigoActual(this.#auth.clienteSupabase());
+    this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo(clienteCodigo), dialogos);
+    new VentanaSesionesActivas(new RepositorioDeSesiones(clienteCodigo)).iniciar(document.getElementById("auth-sesiones-activas"));
     this.#autenticacion.iniciar();
 
     document.body.classList.remove("verificando");

@@ -31,12 +31,15 @@ export class PaseParticipante {
     );
   }
 
-  async emitir(ahoraMs = Date.now()): Promise<string> {
+  /** Emite un pase con jti aleatorio criptográfico. Devuelve también el jti y el vencimiento (ms). */
+  async emitir(ahoraMs = Date.now()): Promise<{ token: string; jti: string; expiraEnMs: number }> {
     const iat = Math.floor(ahoraMs / 1000);
+    const exp = iat + PaseParticipante.DURACION_S;
+    const jti = crypto.randomUUID();
     const cabecera = jsonA64({ alg: "HS256", typ: "JWT" });
-    const datos = jsonA64({ rol: PaseParticipante.ROL, jti: crypto.randomUUID(), iat, exp: iat + PaseParticipante.DURACION_S });
+    const datos = jsonA64({ rol: PaseParticipante.ROL, jti, iat, exp });
     const firma = new Uint8Array(await crypto.subtle.sign("HMAC", await this.#clave, codificador.encode(`${cabecera}.${datos}`)));
-    return `${cabecera}.${datos}.${aBase64Url(firma)}`;
+    return { token: `${cabecera}.${datos}.${aBase64Url(firma)}`, jti, expiraEnMs: exp * 1000 };
   }
 
   /** true solo si la firma, el algoritmo, el rol y las fechas son válidos. Cualquier duda: false. */
@@ -44,8 +47,8 @@ export class PaseParticipante {
     return (await this.leer(token, ahoraMs)) !== null;
   }
 
-  /** Los datos del pase ({ iat }) si es válido; null ante cualquier duda. */
-  async leer(token: string | null, ahoraMs = Date.now()): Promise<{ iat: number } | null> {
+  /** Los datos del pase ({ iat, jti }) si es válido; null ante cualquier duda. */
+  async leer(token: string | null, ahoraMs = Date.now()): Promise<{ iat: number; jti: string } | null> {
     try {
       if (!token) return null;
       const partes = token.split(".");
@@ -64,7 +67,7 @@ export class PaseParticipante {
         p.iat <= ahora + PaseParticipante.TOLERANCIA_RELOJ_S &&
         p.exp > ahora &&
         p.exp - p.iat <= PaseParticipante.DURACION_S;
-      return valido ? { iat: p.iat } : null;
+      return valido ? { iat: p.iat, jti: p.jti } : null;
     } catch {
       return null;
     }

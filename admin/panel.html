@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261120-1">
+<link rel="stylesheet" href="css/panel.css?v=20261120-2">
 </head>
 <body class="verificando">
 
@@ -248,6 +248,7 @@
       </div>
       <p class="ayuda auth-nota">Cerrar el acceso solo impide nuevas entradas</p>
       <div class="auth-botones">
+        <button class="btn-sec" type="button" id="auth-sesiones-activas">Sesiones activas</button>
         <button class="btn-sec" type="button" id="auth-pantalla-completa">Pantalla completa</button>
         <button class="btn-sec" type="button" id="auth-cerrar-sesiones">Cerrar todas las sesiones</button>
       </div>
@@ -285,6 +286,25 @@
   <p id="dialogo-sesion-texto" class="ayuda">No hay actividad en el panel. Por seguridad, la sesión se cierra tras 15 minutos sin uso.</p>
   <div class="acciones">
     <button class="btn-pri" type="button" data-seguir>Seguir conectado</button>
+  </div>
+</dialog>
+
+<dialog id="dialogo-sesiones" class="dialogo-sesiones" role="dialog" aria-modal="true" aria-labelledby="dialogo-sesiones-titulo">
+  <div class="sesiones-contenido">
+    <div class="sesiones-cabecera">
+      <div>
+        <h2 id="dialogo-sesiones-titulo">Sesiones activas</h2>
+        <p class="archivo" id="sesiones-total" aria-live="polite"></p>
+      </div>
+      <button class="btn-cerrar-ventana" type="button" data-cerrar-ventana aria-label="Cerrar ventana">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <label class="visually-hidden" for="sesiones-buscador">Buscar por número o nombre</label>
+    <input class="sesiones-buscador" id="sesiones-buscador" type="text" role="searchbox" enterkeyhint="search" placeholder="Buscar por número o nombre" autocomplete="off" spellcheck="false">
+    <p class="mensaje" id="sesiones-aviso" role="status" hidden></p>
+    <ul class="sesiones-lista" id="sesiones-lista" aria-label="Sesiones activas"></ul>
+    <p class="vacio" id="sesiones-vacio" hidden></p>
   </div>
 </dialog>
 
@@ -457,6 +477,14 @@
   </div>
 </template>
 
+<template id="tpl-sesion">
+  <li class="sesion-fila">
+    <span class="sesion-numero" data-numero></span>
+    <span class="sesion-nombre" data-nombre></span>
+    <button class="btn-sec" type="button" data-cerrar-sesion>Cerrar sesión</button>
+  </li>
+</template>
+
 <template id="tpl-comentario">
   <li class="item-com">
     <div data-avatar></div>
@@ -471,15 +499,16 @@
   </li>
 </template>
 
-<script src="vendor/supabase-js-2.118.0.js?v=20261120-1"></script>
-<script src="config.js?v=20261120-1"></script>
-<script src="js/admin-login.js?v=20261120-1"></script>
-<script src="js/sesion-segura.js?v=20261120-1"></script>
-<script src="js/videos.js?v=20261120-1"></script>
-<script src="js/formulario-video.js?v=20261120-1"></script>
-<script src="js/pestanas-videos.js?v=20261120-1"></script>
-<script src="js/pestana-comentarios.js?v=20261120-1"></script>
-<script src="js/pestana-autenticacion.js?v=20261120-1"></script>
-<script src="js/panel.js?v=20261120-1"></script>
+<script src="vendor/supabase-js-2.118.0.js?v=20261120-2"></script>
+<script src="config.js?v=20261120-2"></script>
+<script src="js/admin-login.js?v=20261120-2"></script>
+<script src="js/sesion-segura.js?v=20261120-2"></script>
+<script src="js/videos.js?v=20261120-2"></script>
+<script src="js/formulario-video.js?v=20261120-2"></script>
+<script src="js/pestanas-videos.js?v=20261120-2"></script>
+<script src="js/pestana-comentarios.js?v=20261120-2"></script>
+<script src="js/pestana-autenticacion.js?v=20261120-2"></script>
+<script src="js/sesiones-activas.js?v=20261120-2"></script>
+<script src="js/panel.js?v=20261120-2"></script>
 </body>
 </html>

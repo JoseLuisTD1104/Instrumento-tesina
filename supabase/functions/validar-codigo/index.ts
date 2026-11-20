@@ -6,6 +6,7 @@ import { CanalHttp } from "../_shared/http.ts";
 import { GeneradorDeCodigo } from "../_shared/codigo.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
 import { HuellaDeRed } from "../_shared/red.ts";
+import { RegistroDeSesiones } from "../_shared/sesiones.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -80,9 +81,13 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
 
     if (!correcto) return await rechazar();
 
-    // f) Pase de participante.
+    // f) Pase de participante con jti aleatorio, registrado en sesiones_activas. Si el registro
+    //    falla, el pase no se entrega (cae en el rechazo genérico del catch).
     const pase = await new PaseParticipante(entorno.secreto("TOKEN_SECRETO")).emitir(ahora);
-    return canal.json(200, { pase, expira_en: PaseParticipante.DURACION_S });
+    const sesiones = new RegistroDeSesiones(servicio);
+    await sesiones.registrar(pase.jti, pase.expiraEnMs);
+    await sesiones.limpiarVencidas(ahora).catch((e) => CanalHttp.registrarError(FUNCION, e)); // limpieza: no decide el acceso
+    return canal.json(200, { pase: pase.token, expira_en: PaseParticipante.DURACION_S });
   } catch (e) {
     // Falla cerrada: cualquier error es un rechazo idéntico a los demás.
     if (!(e instanceof SyntaxError) && !(e instanceof ErrorControlado && e.message === "cuerpo_grande")) {

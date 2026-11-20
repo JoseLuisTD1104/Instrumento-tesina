@@ -431,3 +431,36 @@ dialog .acciones { margin-top: 16px; }
 .auth-nota { margin-top: -4px; }
 .auth-botones { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; }
 .auth-estado-sesiones { margin: 0; }
+
+/* ---------- Ventana "Sesiones activas" ---------- */
+.dialogo-sesiones { width: min(560px, calc(100vw - 32px)); padding: 0; } /* el relleno va adentro: así el clic fuera se distingue */
+.sesiones-contenido { display: flex; flex-direction: column; gap: 12px; padding: 22px 24px 24px; }
+.sesiones-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sesiones-cabecera h2 { font-size: 18px; margin: 0; }
+.btn-cerrar-ventana {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; color: var(--text-dim);
+}
+.btn-cerrar-ventana:hover { background: var(--surface-2); color: var(--text); }
+.btn-cerrar-ventana svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.sesiones-buscador {
+  width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit; font-size: 15px;
+}
+.sesiones-buscador:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+.dialogo-sesiones .mensaje { margin: 0; }
+.sesiones-lista {
+  list-style: none; max-height: 60vh; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--border); border-radius: 10px;
+}
+.sesiones-lista:empty { display: none; }
+.sesion-fila {
+  display: flex; align-items: center; gap: 16px; padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sesion-fila:last-child { border-bottom: 0; }
+.sesion-fila:hover { background: var(--surface-2); }
+.sesion-numero { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.sesion-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sesion-nombre.sin-nombre { color: var(--text-dim); }
+.sesion-fila .btn-sec { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.dialogo-sesiones .vacio { padding: 24px 8px; }

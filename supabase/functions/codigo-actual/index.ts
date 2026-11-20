@@ -3,15 +3,19 @@
 // cuándo está abierto el acceso. Con { accion: "abrir" | "cerrar" } cambia config_acceso usando el
 // JWT del administrador, para que se apliquen sus reglas RLS. Con { accion: "cerrar_sesiones" } pone
 // sesiones_validas_desde = ahora: todos los pases emitidos antes dejan de valer (no toca abierto_hasta).
+// Con { accion: "listar_sesiones" } devuelve las sesiones activas (numero, nombre, creado_en; nunca el
+// jti) y con { accion: "cerrar_sesion", numero } revoca una sola; responde igual exista o no.
 import { Entorno, ErrorControlado, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { GeneradorDeCodigo } from "../_shared/codigo.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
+import { RegistroDeSesiones } from "../_shared/sesiones.ts";
 import { servir } from "../_shared/servidor.ts";
 
 const FUNCION = "codigo-actual";
 const HORAS_ABIERTO = 4;
-const ACCIONES = new Set(["consultar", "abrir", "cerrar", "cerrar_sesiones"]);
+const ACCIONES = new Set(["consultar", "abrir", "cerrar", "cerrar_sesiones", "listar_sesiones", "cerrar_sesion"]);
+const MAX_NUMERO = 2_147_483_647;
 const COLUMNAS = "abierto_hasta,sesiones_validas_desde";
 const PATRON_APIKEY = /^(sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_\-.]+)$/;
 
@@ -44,6 +48,21 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if (typeof accion !== "string" || !ACCIONES.has(accion)) return canal.json(400, { error: "solicitud_invalida" });
 
     const ahora = Date.now();
+
+    // Sesiones individuales: la tabla solo la lee la clave de servicio (ya se verificó al admin).
+    if (accion === "listar_sesiones" || accion === "cerrar_sesion") {
+      const registro = new RegistroDeSesiones(ClienteRest.deServicio(entorno));
+      if (accion === "listar_sesiones") {
+        return canal.json(200, { sesiones: await registro.listar(ahora), ahora: new Date(ahora).toISOString() });
+      }
+      const numero = (cuerpo as { numero?: unknown } | null)?.numero;
+      if (typeof numero !== "number" || !Number.isSafeInteger(numero) || numero < 1 || numero > MAX_NUMERO) {
+        return canal.json(400, { error: "solicitud_invalida" });
+      }
+      await registro.revocar(numero, ahora);
+      return canal.json(200, { ok: true });
+    }
+
     let filas;
     const filtro = { id: "eq.1", select: COLUMNAS };
     if (accion === "consultar") {

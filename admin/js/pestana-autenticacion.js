@@ -1,17 +1,44 @@
 "use strict";
 
 /**
- * Obtiene del servidor (Edge Function "codigo-actual") el código de acceso vigente, los segundos que
- * le quedan según la hora del servidor y hasta cuándo está abierto el acceso. También abre y cierra
- * el acceso. Usa el cliente de Supabase del panel, que manda el JWT del administrador.
+ * Llama a la Edge Function "codigo-actual" con el cliente de Supabase del panel, que manda el JWT del
+ * administrador. Traduce los errores a mensajes para el panel. La usan el código y las sesiones.
  */
-class ProveedorDeCodigo {
+class ClienteCodigoActual {
   static FUNCION = "codigo-actual";
 
   #cliente;
 
   constructor(clienteSupabase) {
     this.#cliente = clienteSupabase;
+  }
+
+  async invocar(cuerpo) {
+    let respuesta;
+    try {
+      respuesta = await this.#cliente.functions.invoke(ClienteCodigoActual.FUNCION, { body: cuerpo });
+    } catch {
+      throw new ErrorPanel("No hay conexión con el servidor.");
+    }
+    const { data, error } = respuesta;
+    if (error) {
+      throw new ErrorPanel(error.context?.status === 401
+        ? "El servidor no reconoce tu sesión de administrador. Vuelve a iniciar sesión."
+        : "El servidor no pudo completar la operación.");
+    }
+    return data;
+  }
+}
+
+/**
+ * Obtiene del servidor el código de acceso vigente, los segundos que le quedan según la hora del
+ * servidor y hasta cuándo está abierto el acceso. También abre y cierra el acceso.
+ */
+class ProveedorDeCodigo {
+  #servidor;
+
+  constructor(clienteCodigoActual) {
+    this.#servidor = clienteCodigoActual;
   }
 
   obtener() { return this.#llamar("consultar"); }
@@ -25,19 +52,7 @@ class ProveedorDeCodigo {
 
   /** { codigo, segundosRestantes, abiertoHasta (ms o null), sesionesValidasDesde (ms o null), desfaseMs } */
   async #llamar(accion) {
-    let respuesta;
-    try {
-      respuesta = await this.#cliente.functions.invoke(ProveedorDeCodigo.FUNCION, { body: { accion } });
-    } catch {
-      throw new ErrorPanel("No hay conexión con el servidor del código.");
-    }
-    const { data, error } = respuesta;
-    if (error) {
-      const estado = error.context?.status;
-      throw new ErrorPanel(estado === 401
-        ? "El servidor no reconoce tu sesión de administrador. Vuelve a iniciar sesión."
-        : "No se pudo obtener el código del servidor.");
-    }
+    const data = await this.#servidor.invocar({ accion });
     const codigo = data?.codigo;
     const segundos = Number(data?.segundos_restantes);
     const ahoraServidor = Date.parse(data?.ahora ?? "");
