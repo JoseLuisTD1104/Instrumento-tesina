@@ -55,11 +55,13 @@ class ClienteFunciones {
   get origen() { return this.#origen; }
 
   /** Devuelve el JSON de la respuesta; 401 → ErrorSinPase; cualquier otro error → Error. */
-  async llamar(funcion, { metodo = "POST", cuerpo, pase } = {}) {
+  async llamar(funcion, { metodo = "POST", cuerpo, pase, consulta } = {}) {
     const cabeceras = { apikey: this.#clave };
     if (cuerpo !== undefined) cabeceras["Content-Type"] = "application/json";
     if (pase) cabeceras.Authorization = `Bearer ${pase}`;
-    const r = await fetch(`${this.#origen}/functions/v1/${funcion}`, {
+    const url = new URL(`${this.#origen}/functions/v1/${funcion}`);
+    for (const [k, v] of Object.entries(consulta ?? {})) url.searchParams.set(k, v);
+    const r = await fetch(url, {
       method: metodo,
       headers: cabeceras,
       body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
@@ -69,7 +71,56 @@ class ClienteFunciones {
     });
     if (r.status === 401) throw new ErrorSinPase();
     if (!r.ok) throw new Error("servicio");
-    return r.json();
+    return r.status === 204 ? null : r.json();
+  }
+}
+
+/**
+ * Mientras haya un pase, pregunta al servidor cada 15 s (y al volver a la pestaña) si sigue valiendo.
+ * Si responde 401 (pase vencido o sesiones cerradas desde el panel), avisa para salir del feed.
+ * Si la red falla, no cierra nada: lo intenta otra vez en la siguiente vuelta.
+ */
+class VigilanteDeSesion {
+  static INTERVALO_MS = 15_000;
+
+  #funciones;
+  #pase;
+  #alCerrarse;
+  #intervalo = null;
+  #revisando = false;
+  #alVolver = () => { if (document.visibilityState === "visible") this.#revisar(); };
+
+  constructor(funciones, pase, alCerrarse) {
+    this.#funciones = funciones;
+    this.#pase = pase;
+    this.#alCerrarse = alCerrarse;
+  }
+
+  iniciar() {
+    this.#intervalo = window.setInterval(() => this.#revisar(), VigilanteDeSesion.INTERVALO_MS);
+    document.addEventListener("visibilitychange", this.#alVolver);
+  }
+
+  detener() {
+    window.clearInterval(this.#intervalo);
+    this.#intervalo = null;
+    document.removeEventListener("visibilitychange", this.#alVolver);
+  }
+
+  async #revisar() {
+    if (this.#revisando || this.#intervalo === null) return;
+    this.#revisando = true;
+    try {
+      await this.#funciones.llamar("feed-videos", { metodo: "GET", pase: this.#pase, consulta: { accion: "solo_verificar" } });
+    } catch (e) {
+      if (e instanceof ErrorSinPase) {
+        this.detener();
+        this.#alCerrarse();
+      }
+      // Cualquier otro error (red, servidor): se reintenta en la siguiente vuelta sin cerrar la sesión.
+    } finally {
+      this.#revisando = false;
+    }
   }
 }
 
@@ -118,19 +169,30 @@ class PantallaDeAcceso {
   #campo = document.getElementById("codigo-acceso");
   #boton = document.getElementById("acceso-enviar");
   #error = document.getElementById("acceso-error");
-  #alObtenerPase = () => {};
+  #aviso = document.getElementById("acceso-aviso");
+  #alObtenerPase;
   #enviando = false;
 
-  constructor(funciones) {
+  constructor(funciones, alObtenerPase) {
     this.#funciones = funciones;
-  }
-
-  mostrar(alObtenerPase) {
     this.#alObtenerPase = alObtenerPase;
-    this.#seccion.hidden = false;
     this.#form.addEventListener("submit", (e) => { e.preventDefault(); this.#enviar(); });
     this.#campo.addEventListener("input", () => { this.#mostrarError(""); });
+  }
+
+  /** Muestra la pantalla; con `aviso` explica por qué se volvió a ella (p. ej., "Tu sesión se cerró"). */
+  mostrar(aviso = "") {
+    this.#campo.value = "";
+    this.#mostrarError("");
+    this.#aviso.textContent = aviso;
+    this.#aviso.hidden = !aviso;
+    this.#seccion.hidden = false;
     this.#campo.focus();
+  }
+
+  ocultar() {
+    this.#seccion.hidden = true;
+    this.#aviso.hidden = true;
   }
 
   /** Acepta pegar con espacios: se quitan todos antes de validar. */
@@ -150,7 +212,8 @@ class PantallaDeAcceso {
     this.#mostrarError("");
     try {
       const datos = await this.#funciones.llamar("validar-codigo", { cuerpo: { codigo } });
-      this.#alObtenerPase(datos?.pase);
+      if (typeof datos?.pase !== "string") throw new Error("pase");
+      this.#alObtenerPase(datos.pase);
     } catch {
       this.#mostrarError(PantallaDeAcceso.MENSAJE);
       this.#campo.select();
@@ -291,6 +354,7 @@ class VideoDelFeed {
   #reintentos = 0;
   #activo = false;
   #pausadoPorUsuario = false;
+  #destruido = false;
   raiz;
 
   constructor(repo, datos, feed) {
@@ -324,6 +388,16 @@ class VideoDelFeed {
   /** Precarga la URL del siguiente video para que empiece sin espera. */
   async precargar() {
     if (!this.#activo) await this.#asegurarFuente(false);
+  }
+
+  /** Al cerrarse la sesión: detiene el video y suelta su URL firmada. */
+  destruir() {
+    this.#destruido = true;
+    this.#activo = false;
+    this.#video.pause();
+    this.#video.removeAttribute("src");
+    this.#video.load();
+    this.#firma = null;
   }
 
   /** Suelta la URL cuando el video queda lejos: menos tiempo expuesta y menos memoria. */
@@ -429,6 +503,7 @@ class VideoDelFeed {
       try {
         const segundo = this.#video.currentTime || 0;
         this.#firma = await this.#repo.urlVideo(this.#datos.id);
+        if (this.#destruido) { this.#firma = null; return; } // la sesión se cerró mientras se firmaba
         this.#video.preload = "auto";
         this.#video.src = this.#firma.url; // solo en el atributo src del reproductor, nunca en texto ni enlaces
         if (segundo > 0) {
@@ -480,6 +555,8 @@ class FeedPagina {
   #videos = [];
   #indice = -1;
   #conSonido = false;
+  #observador = null;
+  #escuchas = new AbortController(); // permite quitar todos los escuchadores al vaciar
 
   constructor(repo, alPerderPase) {
     this.#repo = repo;
@@ -492,11 +569,23 @@ class FeedPagina {
     this.#alPerderPase();
   }
 
+  /** Pausa y quita todos los videos (src y elementos) y los escuchadores. La página queda vacía. */
+  vaciar() {
+    this.#escuchas.abort();
+    this.#observador?.disconnect();
+    this.#videos.forEach((v) => v.destruir());
+    this.#videos = [];
+    this.#estado.textContent = "Cargando videos…";
+    this.#contenedor.replaceChildren(this.#estado);
+    this.#anterior.disabled = true;
+    this.#siguiente.disabled = true;
+  }
+
   async iniciar() {
     // Bloqueo general de arrastre y del menú contextual sobre medios.
     document.addEventListener("contextmenu", (e) => {
       if (e.target.closest?.(".player, video, img")) e.preventDefault();
-    });
+    }, { signal: this.#escuchas.signal });
     let filas;
     try {
       filas = await this.#repo.listarPublicados();
@@ -505,6 +594,7 @@ class FeedPagina {
       this.#mostrarEstado("No se pudieron cargar los videos. Recarga la página.");
       return;
     }
+    if (this.#escuchas.signal.aborted) return; // la sesión se cerró mientras cargaba
     if (!filas.length) {
       this.#mostrarEstado("Todavía no hay videos publicados.");
       return;
@@ -528,7 +618,7 @@ class FeedPagina {
   }
 
   #observar() {
-    const observador = new IntersectionObserver((entradas) => {
+    const observador = this.#observador = new IntersectionObserver((entradas) => {
       for (const e of entradas) {
         if (e.isIntersecting && e.intersectionRatio >= 0.6) this.#activar(this.#videos.findIndex((v) => v.raiz === e.target));
       }
@@ -557,12 +647,13 @@ class FeedPagina {
   }
 
   #conectarNavegacion() {
-    this.#anterior.addEventListener("click", () => this.#irA(this.#indice - 1));
-    this.#siguiente.addEventListener("click", () => this.#irA(this.#indice + 1));
+    const opciones = { signal: this.#escuchas.signal };
+    this.#anterior.addEventListener("click", () => this.#irA(this.#indice - 1), opciones);
+    this.#siguiente.addEventListener("click", () => this.#irA(this.#indice + 1), opciones);
     document.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); this.#irA(this.#indice + 1); }
       if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); this.#irA(this.#indice - 1); }
-    });
+    }, opciones);
   }
 
   #mostrarEstado(texto) {
@@ -570,37 +661,51 @@ class FeedPagina {
   }
 }
 
-/** Arranque: sin pase solo existe la pantalla de acceso; con pase, el feed. */
+/** Arranque: sin pase solo existe la pantalla de acceso; con pase, el feed y su vigilante. */
 class AppFeed {
+  static AVISO_SESION_CERRADA = "Tu sesión se cerró";
+
   #funciones;
   #almacen = new AlmacenDePase();
+  #acceso;
+  #pagina = null;
+  #vigilante = null;
 
   constructor(config) {
     this.#funciones = new ClienteFunciones(config);
+    this.#acceso = new PantallaDeAcceso(this.#funciones, (pase) => this.#entrar(pase));
   }
 
   iniciar() {
     const pase = this.#almacen.leer();
     if (pase) this.#mostrarFeed(pase);
-    else new PantallaDeAcceso(this.#funciones).mostrar((nuevo) => this.#entrar(nuevo));
+    else this.#acceso.mostrar();
   }
 
   #entrar(pase) {
     this.#almacen.guardar(pase);
-    document.getElementById("acceso").hidden = true;
+    this.#acceso.ocultar();
     this.#mostrarFeed(pase);
   }
 
   #mostrarFeed(pase) {
     for (const id of ["cabecera", "nav", "feed"]) document.getElementById(id).hidden = false;
-    const repo = new FeedRepositorio(this.#funciones, pase);
-    new FeedPagina(repo, () => this.#perderPase()).iniciar();
+    this.#pagina = new FeedPagina(new FeedRepositorio(this.#funciones, pase), () => this.#cerrarSesion());
+    this.#vigilante = new VigilanteDeSesion(this.#funciones, pase, () => this.#cerrarSesion());
+    this.#pagina.iniciar();
+    this.#vigilante.iniciar();
   }
 
-  /** Pase vencido o rechazado: se borra y se recarga en la pantalla de acceso. */
-  #perderPase() {
+  /** Pase rechazado (vencido o sesiones cerradas): borra el pase, vacía el feed y vuelve al acceso. */
+  #cerrarSesion() {
+    if (!this.#pagina) return; // ya se cerró (pueden avisar el vigilante y una llamada a la vez)
     this.#almacen.borrar();
-    window.location.replace(window.location.pathname);
+    this.#vigilante?.detener();
+    this.#pagina.vaciar();
+    this.#pagina = null;
+    this.#vigilante = null;
+    for (const id of ["cabecera", "nav", "feed"]) document.getElementById(id).hidden = true;
+    this.#acceso.mostrar(AppFeed.AVISO_SESION_CERRADA);
   }
 }
 

@@ -271,3 +271,4 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 .acceso-tarjeta button:disabled { opacity: .5; cursor: default; }
 .acceso-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
+.acceso-aviso { background: var(--surface-hover); color: var(--text); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }

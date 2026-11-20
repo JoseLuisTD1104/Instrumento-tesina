@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261119-13">
+<link rel="stylesheet" href="feed.css?v=20261120-1">
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     <label for="codigo-acceso">Código de acceso</label>
     <input id="codigo-acceso" name="codigo" type="text" inputmode="numeric" autocomplete="one-time-code"
            maxlength="24" placeholder="0000 0000" spellcheck="false" autocapitalize="off" required>
+    <p class="acceso-aviso" id="acceso-aviso" role="status" hidden></p>
     <p class="acceso-error" id="acceso-error" role="alert" hidden></p>
     <button type="submit" id="acceso-enviar">Entrar</button>
   </form>
@@ -87,7 +88,7 @@
   </section>
 </template>
 
-<script src="../admin/config.js?v=20261119-13"></script>
-<script src="feed.js?v=20261119-13"></script>
+<script src="../admin/config.js?v=20261120-1"></script>
+<script src="feed.js?v=20261120-1"></script>
 </body>
 </html>

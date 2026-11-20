@@ -426,3 +426,8 @@ dialog .acciones { margin-top: 16px; }
 .auth-escenario:fullscreen { background: #000; gap: 5vh; padding: 0; }
 .auth-escenario:fullscreen .auth-circulo { width: 10vh; height: 10vh; }
 .auth-escenario::backdrop { background: #000; }
+
+/* Botones de la pestaña Autenticación: Pantalla completa y Cerrar todas las sesiones, iguales y en una fila */
+.auth-nota { margin-top: -4px; }
+.auth-botones { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 10px; }
+.auth-estado-sesiones { margin: 0; }

@@ -1,5 +1,5 @@
 // Pase de participante: JWT HS256 firmado con TOKEN_SECRETO usando Web Crypto (sin dependencias).
-// Claims: rol "participante", jti aleatorio, iat y exp (3 horas).
+// Claims: rol "participante", jti aleatorio, iat y exp (25 minutos).
 
 const codificador = new TextEncoder();
 
@@ -19,7 +19,7 @@ function deBase64Url(texto: string): Uint8Array {
 const jsonA64 = (objeto: unknown) => aBase64Url(codificador.encode(JSON.stringify(objeto)));
 
 export class PaseParticipante {
-  static DURACION_S = 3 * 60 * 60;
+  static DURACION_S = 25 * 60;
   static ROL = "participante";
   static TOLERANCIA_RELOJ_S = 60;
 
@@ -41,26 +41,32 @@ export class PaseParticipante {
 
   /** true solo si la firma, el algoritmo, el rol y las fechas son válidos. Cualquier duda: false. */
   async verificar(token: string | null, ahoraMs = Date.now()): Promise<boolean> {
+    return (await this.leer(token, ahoraMs)) !== null;
+  }
+
+  /** Los datos del pase ({ iat }) si es válido; null ante cualquier duda. */
+  async leer(token: string | null, ahoraMs = Date.now()): Promise<{ iat: number } | null> {
     try {
-      if (!token) return false;
+      if (!token) return null;
       const partes = token.split(".");
-      if (partes.length !== 3) return false;
+      if (partes.length !== 3) return null;
       const [cabecera, datos, firma] = partes;
       const h = JSON.parse(new TextDecoder().decode(deBase64Url(cabecera)));
-      if (h?.alg !== "HS256" || h?.typ !== "JWT") return false; // nunca "none" ni otros algoritmos
+      if (h?.alg !== "HS256" || h?.typ !== "JWT") return null; // nunca "none" ni otros algoritmos
       // verify de HMAC en Web Crypto compara en tiempo constante
       const valida = await crypto.subtle.verify("HMAC", await this.#clave, deBase64Url(firma), codificador.encode(`${cabecera}.${datos}`));
-      if (!valida) return false;
+      if (!valida) return null;
       const p = JSON.parse(new TextDecoder().decode(deBase64Url(datos)));
       const ahora = Math.floor(ahoraMs / 1000);
-      return p?.rol === PaseParticipante.ROL &&
+      const valido = p?.rol === PaseParticipante.ROL &&
         typeof p?.jti === "string" && /^[0-9a-f-]{36}$/.test(p.jti) &&
         Number.isInteger(p?.iat) && Number.isInteger(p?.exp) &&
         p.iat <= ahora + PaseParticipante.TOLERANCIA_RELOJ_S &&
         p.exp > ahora &&
         p.exp - p.iat <= PaseParticipante.DURACION_S;
+      return valido ? { iat: p.iat } : null;
     } catch {
-      return false;
+      return null;
     }
   }
 }

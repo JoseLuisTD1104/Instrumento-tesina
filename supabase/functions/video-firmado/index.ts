@@ -1,12 +1,14 @@
 // Edge Function "video-firmado" de corto (pública con pase).
-// Con un pase de participante válido recibe { id } de un video, comprueba que está publicado y
-// devuelve una URL firmada de pocos minutos para el bucket privado "videos". Sin pase: 401 y no firma.
+// Con un pase de participante válido (y emitido después del último cierre de sesiones) recibe { id }
+// de un video, comprueba que está publicado y devuelve una URL firmada de pocos minutos para el bucket
+// privado "videos". Sin pase válido: 401 y no firma. No revisa abierto_hasta.
 //
 // La clave secreta NUNCA está en el repositorio: se lee de las variables de entorno de Supabase
 // (CORTO_SECRET_KEY si la configuraste; si no, SUPABASE_SERVICE_ROLE_KEY, que Supabase inyecta).
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
+import { VerificadorDeSesion } from "../_shared/sesiones.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -29,8 +31,9 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
 
   try {
     // Primero el pase: sin él no se lee ni se firma nada.
-    const pase = new PaseParticipante(entorno.secreto("TOKEN_SECRETO"));
-    if (!(await pase.verificar(CanalHttp.bearer(peticion)))) return canal.json(401, { error: "pase_invalido" });
+    const servicio = ClienteRest.deServicio(entorno);
+    const sesion = new VerificadorDeSesion(new PaseParticipante(entorno.secreto("TOKEN_SECRETO")), servicio);
+    if (!(await sesion.valida(CanalHttp.bearer(peticion)))) return canal.json(401, { error: "pase_invalido" });
 
     let id: unknown;
     try {
@@ -41,7 +44,6 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if (typeof id !== "string" || !PATRON_ID.test(id)) return canal.json(400, { error: "solicitud_invalida" });
 
     // 1) El video debe existir y estar publicado.
-    const servicio = ClienteRest.deServicio(entorno);
     const filas = await servicio.consultar("videos", { select: "ruta_archivo", id: `eq.${id}`, publicado: "eq.true", limit: "1" });
     const ruta = filas[0]?.ruta_archivo;
     if (typeof ruta !== "string" || !PATRON_RUTA.test(ruta)) return canal.json(404, { error: "no_disponible" });

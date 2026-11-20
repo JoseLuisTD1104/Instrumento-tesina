@@ -1,7 +1,8 @@
 // Edge Function "codigo-actual" (solo administrador).
 // Devuelve el código de la ventana actual, los segundos que le quedan (hora del servidor) y hasta
 // cuándo está abierto el acceso. Con { accion: "abrir" | "cerrar" } cambia config_acceso usando el
-// JWT del administrador, para que se apliquen sus reglas RLS.
+// JWT del administrador, para que se apliquen sus reglas RLS. Con { accion: "cerrar_sesiones" } pone
+// sesiones_validas_desde = ahora: todos los pases emitidos antes dejan de valer (no toca abierto_hasta).
 import { Entorno, ErrorControlado, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { GeneradorDeCodigo } from "../_shared/codigo.ts";
@@ -10,7 +11,8 @@ import { servir } from "../_shared/servidor.ts";
 
 const FUNCION = "codigo-actual";
 const HORAS_ABIERTO = 4;
-const ACCIONES = new Set(["consultar", "abrir", "cerrar"]);
+const ACCIONES = new Set(["consultar", "abrir", "cerrar", "cerrar_sesiones"]);
+const COLUMNAS = "abierto_hasta,sesiones_validas_desde";
 const PATRON_APIKEY = /^(sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_\-.]+)$/;
 
 export async function manejar(peticion: Request, leer: LectorEntorno): Promise<Response> {
@@ -43,11 +45,14 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
 
     const ahora = Date.now();
     let filas;
+    const filtro = { id: "eq.1", select: COLUMNAS };
     if (accion === "consultar") {
-      filas = await comoAdmin.consultar("config_acceso", { select: "abierto_hasta", id: "eq.1" });
+      filas = await comoAdmin.consultar("config_acceso", filtro);
+    } else if (accion === "cerrar_sesiones") {
+      filas = await comoAdmin.actualizar("config_acceso", filtro, { sesiones_validas_desde: new Date(ahora).toISOString() });
     } else {
       const abiertoHasta = accion === "abrir" ? new Date(ahora + HORAS_ABIERTO * 3600_000).toISOString() : null;
-      filas = await comoAdmin.actualizar("config_acceso", { id: "eq.1", select: "abierto_hasta" },
+      filas = await comoAdmin.actualizar("config_acceso", filtro,
         { abierto_hasta: abiertoHasta, actualizado_en: new Date(ahora).toISOString() });
     }
     if (filas.length !== 1) throw new ErrorControlado("config_acceso_sin_fila");
@@ -59,6 +64,7 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
       codigo: await generador.codigo(GeneradorDeCodigo.ventanaDe(ahora)),
       segundos_restantes: Math.round(GeneradorDeCodigo.segundosRestantes(ahora) * 1000) / 1000,
       abierto_hasta: abiertoHasta,
+      sesiones_validas_desde: filas[0].sesiones_validas_desde ?? null,
       ahora: new Date(ahora).toISOString(),
     });
   } catch (e) {

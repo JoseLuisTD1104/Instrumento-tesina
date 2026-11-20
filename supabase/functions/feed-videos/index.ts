@@ -1,8 +1,11 @@
-// Edge Function "feed-videos" (pública con pase). Con un pase de participante válido devuelve solo
-// los videos publicados, en cola por publicado_en, con los campos que usa el feed.
+// Edge Function "feed-videos" (pública con pase). Con un pase de participante válido (y emitido
+// después del último cierre de sesiones) devuelve solo los videos publicados, en cola por
+// publicado_en, con los campos que usa el feed. Con ?accion=solo_verificar solo valida el pase y
+// responde 204 sin datos. No revisa abierto_hasta: cerrar el acceso solo impide entradas nuevas.
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
+import { VerificadorDeSesion } from "../_shared/sesiones.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -27,10 +30,15 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
   if (corte) return corte;
 
   try {
-    const pase = new PaseParticipante(entorno.secreto("TOKEN_SECRETO"));
-    if (!(await pase.verificar(CanalHttp.bearer(peticion)))) return canal.json(401, { error: "pase_invalido" });
+    const accion = new URL(peticion.url).searchParams.get("accion");
+    if (accion !== null && accion !== "solo_verificar") return canal.json(400, { error: "solicitud_invalida" });
 
-    const videos = await ClienteRest.deServicio(entorno).consultar("videos", {
+    const servicio = ClienteRest.deServicio(entorno);
+    const sesion = new VerificadorDeSesion(new PaseParticipante(entorno.secreto("TOKEN_SECRETO")), servicio);
+    if (!(await sesion.valida(CanalHttp.bearer(peticion)))) return canal.json(401, { error: "pase_invalido" });
+    if (accion === "solo_verificar") return canal.vacio(204);
+
+    const videos = await servicio.consultar("videos", {
       select: COLUMNAS,
       publicado: "eq.true",
       order: "publicado_en.asc.nullslast,id.asc",

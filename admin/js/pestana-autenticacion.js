@@ -20,7 +20,10 @@ class ProveedorDeCodigo {
 
   cerrarAcceso() { return this.#llamar("cerrar"); }
 
-  /** { codigo, segundosRestantes, abiertoHasta (ms o null), desfaseMs (hora servidor − hora local) } */
+  /** Invalida todos los pases emitidos hasta ahora (no toca el acceso ni la sesión del panel). */
+  cerrarSesiones() { return this.#llamar("cerrar_sesiones"); }
+
+  /** { codigo, segundosRestantes, abiertoHasta (ms o null), sesionesValidasDesde (ms o null), desfaseMs } */
   async #llamar(accion) {
     let respuesta;
     try {
@@ -39,11 +42,13 @@ class ProveedorDeCodigo {
     const segundos = Number(data?.segundos_restantes);
     const ahoraServidor = Date.parse(data?.ahora ?? "");
     const abiertoHasta = data?.abierto_hasta == null ? null : Date.parse(data.abierto_hasta);
+    const sesionesValidasDesde = data?.sesiones_validas_desde == null ? null : Date.parse(data.sesiones_validas_desde);
     if (typeof codigo !== "string" || !/^\d{8}$/.test(codigo) || !(segundos >= 0 && segundos <= 300) ||
-        !Number.isFinite(ahoraServidor) || (abiertoHasta !== null && !Number.isFinite(abiertoHasta))) {
+        !Number.isFinite(ahoraServidor) || (abiertoHasta !== null && !Number.isFinite(abiertoHasta)) ||
+        (sesionesValidasDesde !== null && !Number.isFinite(sesionesValidasDesde))) {
       throw new ErrorPanel("El servidor devolvió una respuesta inesperada.");
     }
-    return { codigo, segundosRestantes: segundos, abiertoHasta, desfaseMs: ahoraServidor - Date.now() };
+    return { codigo, segundosRestantes: segundos, abiertoHasta, sesionesValidasDesde, desfaseMs: ahoraServidor - Date.now() };
   }
 }
 
@@ -56,6 +61,7 @@ class PestanaAutenticacion {
   static PAUSA_TRAS_CAMBIO_MS = 400; // margen para pedir el siguiente código ya en la nueva ventana
 
   #proveedor;
+  #dialogos;
   #codigo = null;
   #finVentana = 0;          // performance.now() en que termina la ventana, según el servidor
   #abiertoHasta = null;     // ms, en hora del servidor
@@ -72,12 +78,15 @@ class PestanaAutenticacion {
   #tiempo = document.getElementById("auth-tiempo");
   #botonPantalla = document.getElementById("auth-pantalla-completa");
   #interruptor = document.getElementById("auth-acceso");
+  #botonCerrarSesiones = document.getElementById("auth-cerrar-sesiones");
+  #estadoSesiones = document.getElementById("auth-estado-sesiones");
   #estadoAcceso = document.getElementById("auth-estado-acceso");
   #mensaje = document.getElementById("auth-mensaje");
   #longitudArco;
 
-  constructor(proveedor) {
+  constructor(proveedor, dialogos) {
     this.#proveedor = proveedor;
+    this.#dialogos = dialogos;
     this.#longitudArco = 2 * Math.PI * Number(this.#arco.getAttribute("r")); // circunferencia del arco
     this.#arco.style.strokeDasharray = String(this.#longitudArco);
   }
@@ -89,6 +98,7 @@ class PestanaAutenticacion {
     }
     this.#botonPantalla.addEventListener("click", () => this.#entrarPantallaCompleta());
     this.#interruptor.addEventListener("change", () => this.#cambiarAcceso());
+    this.#botonCerrarSesiones.addEventListener("click", () => this.#cerrarSesiones());
     this.#pintarAcceso();
   }
 
@@ -185,6 +195,28 @@ class PestanaAutenticacion {
     } finally {
       this.#interruptor.disabled = false;
       this.#pintarAcceso(); // si falló, el interruptor vuelve a su estado real
+    }
+  }
+
+  /** Saca a todos los participantes: sus pases dejan de valer y sus feeds vuelven al acceso. */
+  async #cerrarSesiones() {
+    const confirmado = await this.#dialogos.confirmar(
+      "¿Cerrar todas las sesiones de los participantes? Todos los feeds abiertos volverán a la pantalla de acceso en unos segundos. El acceso con código no cambia.",
+      "Cerrar todas las sesiones",
+    );
+    if (!confirmado) return;
+    this.#botonCerrarSesiones.disabled = true;
+    try {
+      const respuesta = await this.#proveedor.cerrarSesiones();
+      if (respuesta.sesionesValidasDesde === null) throw new ErrorPanel("El servidor no confirmó el cierre de sesiones.");
+      this.#aplicar(respuesta);
+      const hora = new Date(respuesta.sesionesValidasDesde - respuesta.desfaseMs)
+        .toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+      PanelFormato.mensaje(this.#estadoSesiones, `Sesiones cerradas a las ${hora}`, "exito");
+    } catch (e) {
+      PanelFormato.mensaje(this.#estadoSesiones, PanelFormato.errorVisible(e, "No se pudieron cerrar las sesiones."), "error");
+    } finally {
+      this.#botonCerrarSesiones.disabled = false;
     }
   }
 
