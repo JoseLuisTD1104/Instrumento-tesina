@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261120-1">
+<link rel="stylesheet" href="feed.css?v=20261121-1">
 </head>
 <body>
 
@@ -35,6 +35,56 @@
     <p class="acceso-error" id="acceso-error" role="alert" hidden></p>
     <button type="submit" id="acceso-enviar">Entrar</button>
   </form>
+</section>
+
+<!-- Registro: aviso de privacidad y datos del participante (después del código, antes del feed) -->
+<section class="registro" id="registro" hidden>
+  <div class="registro-tarjeta">
+    <div class="logo registro-logo">corto<span>.</span></div>
+    <div class="registro-pestanas" role="tablist" aria-label="Registro">
+      <button type="button" role="tab" id="tab-aviso" aria-controls="panel-aviso" aria-selected="true">Aviso de privacidad</button>
+      <button type="button" role="tab" id="tab-datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">Tus datos</button>
+    </div>
+    <div class="registro-panel registro-aviso" id="panel-aviso" role="tabpanel" aria-labelledby="tab-aviso" tabindex="0"></div>
+    <form class="registro-panel registro-datos" id="panel-datos" role="tabpanel" aria-labelledby="tab-datos" novalidate hidden>
+      <div class="campo">
+        <label for="reg-matricula">Matrícula</label>
+        <input id="reg-matricula" name="matricula" type="text" maxlength="15" autocomplete="off"
+               autocapitalize="characters" spellcheck="false" aria-describedby="reg-matricula-error" required>
+        <div class="campo-pie">
+          <p class="campo-error" id="reg-matricula-error" hidden></p>
+          <span class="campo-contador" id="reg-matricula-contador" aria-hidden="true">0/15</span>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="reg-nombre">Nombre</label>
+        <p class="campo-ayuda" id="reg-nombre-ayuda">Solo tu nombre de pila, sin apellidos</p>
+        <input id="reg-nombre" name="nombre" type="text" maxlength="40" autocomplete="off"
+               autocapitalize="words" spellcheck="false" aria-describedby="reg-nombre-ayuda reg-nombre-error" required>
+        <div class="campo-pie">
+          <p class="campo-error" id="reg-nombre-error" hidden></p>
+          <span class="campo-contador" id="reg-nombre-contador" aria-hidden="true">0/40</span>
+        </div>
+      </div>
+      <div class="campo">
+        <label for="reg-carrera">Carrera</label>
+        <input id="reg-carrera" name="carrera" type="text" maxlength="60" autocomplete="off"
+               spellcheck="false" aria-describedby="reg-carrera-error" required>
+        <div class="campo-pie">
+          <p class="campo-error" id="reg-carrera-error" hidden></p>
+          <span class="campo-contador" id="reg-carrera-contador" aria-hidden="true">0/60</span>
+        </div>
+      </div>
+    </form>
+    <div class="registro-pie">
+      <label class="registro-casilla">
+        <input type="checkbox" id="reg-acepto">
+        <span>He leído el aviso de privacidad y acepto participar en este estudio</span>
+      </label>
+      <p class="registro-error" id="reg-error" role="alert" hidden></p>
+      <button type="button" class="registro-boton" id="reg-enviar" disabled>Estoy de acuerdo</button>
+    </div>
+  </div>
 </section>
 
 <main class="feed" id="feed" hidden>
@@ -89,6 +139,7 @@
 </template>
 
 <script src="../admin/config.js?v=20261120-1"></script>
-<script src="feed.js?v=20261120-1"></script>
+<script src="aviso-privacidad.js?v=20261121-1"></script>
+<script src="feed.js?v=20261121-1"></script>
 </body>
 </html>

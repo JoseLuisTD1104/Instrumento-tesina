@@ -2,13 +2,26 @@
 
 /**
  * Feed de "corto". Solo se entra con el código de acceso que se proyecta en el salón: la Edge
- * Function "validar-codigo" entrega un pase (JWT de 3 h) que se guarda en sessionStorage y se manda
- * en Authorization a "feed-videos" y "video-firmado". Sin pase válido no se carga nada del feed.
- * Todo texto se pinta con textContent. No se guarda ninguna interacción del participante.
+ * Function "validar-codigo" entrega un pase (JWT de 25 min) que se guarda en sessionStorage y se manda
+ * en Authorization a las demás funciones. Después del código, el participante lee el aviso de privacidad
+ * y da sus datos ("registrar-participante"); sin ese registro el servidor no entrega el feed (403).
+ * Los datos personales solo viajan en esa petición: no se guardan en sessionStorage, localStorage ni
+ * cookies. Todo texto se pinta con nodos y textContent. No se guarda ninguna interacción del participante.
  */
 
 /** El servidor rechazó el pase (401): hay que volver a la pantalla de acceso. */
 class ErrorSinPase extends Error {}
+
+/** El pase vale, pero la sesión aún no aceptó el aviso ni dio sus datos (403 falta_registro). */
+class ErrorFaltaRegistro extends Error {}
+
+/** El servidor rechazó los datos del registro (400 datos_invalidos): trae solo los nombres de campo. */
+class ErrorDatosInvalidos extends Error {
+  constructor(campos) {
+    super("datos_invalidos");
+    this.campos = Array.isArray(campos) ? campos.filter((c) => typeof c === "string") : [];
+  }
+}
 
 /** Guarda el pase en sessionStorage: se pierde al cerrar la pestaña. */
 class AlmacenDePase {
@@ -54,7 +67,10 @@ class ClienteFunciones {
 
   get origen() { return this.#origen; }
 
-  /** Devuelve el JSON de la respuesta; 401 → ErrorSinPase; cualquier otro error → Error. */
+  /**
+   * Devuelve el JSON de la respuesta. 401 → ErrorSinPase; 403 falta_registro → ErrorFaltaRegistro;
+   * 400 datos_invalidos → ErrorDatosInvalidos; cualquier otro error → Error.
+   */
   async llamar(funcion, { metodo = "POST", cuerpo, pase, consulta } = {}) {
     const cabeceras = { apikey: this.#clave };
     if (cuerpo !== undefined) cabeceras["Content-Type"] = "application/json";
@@ -70,15 +86,21 @@ class ClienteFunciones {
       referrerPolicy: "no-referrer",
     });
     if (r.status === 401) throw new ErrorSinPase();
-    if (!r.ok) throw new Error("servicio");
+    if (!r.ok) {
+      const datos = await r.json().catch(() => null);
+      if (r.status === 403 && datos?.error === "falta_registro") throw new ErrorFaltaRegistro();
+      if (r.status === 400 && datos?.error === "datos_invalidos") throw new ErrorDatosInvalidos(datos.campos);
+      throw new Error("servicio");
+    }
     return r.status === 204 ? null : r.json();
   }
 }
 
 /**
- * Mientras haya un pase, pregunta al servidor cada 15 s (y al volver a la pestaña) si sigue valiendo.
- * Si responde 401 (pase vencido o sesiones cerradas desde el panel), avisa para salir del feed.
- * Si la red falla, no cierra nada: lo intenta otra vez en la siguiente vuelta.
+ * Mientras haya un pase, pregunta al servidor cada 15 s (y al volver a la pestaña) si sigue valiendo,
+ * también mientras el participante lee el aviso y da sus datos. Si responde 401 (pase vencido o
+ * sesiones cerradas desde el panel), avisa para salir. Si la red falla, no cierra nada: lo intenta otra
+ * vez en la siguiente vuelta.
  */
 class VigilanteDeSesion {
   static INTERVALO_MS = 15_000;
@@ -96,6 +118,13 @@ class VigilanteDeSesion {
     this.#alCerrarse = alCerrarse;
   }
 
+  /** { registrada } si el pase sigue valiendo; lanza ErrorSinPase si no. No envía ni recibe datos personales. */
+  static async estado(funciones, pase) {
+    const datos = await funciones.llamar("registrar-participante", { cuerpo: { accion: "estado" }, pase });
+    if (typeof datos?.registrada !== "boolean") throw new Error("estado");
+    return datos;
+  }
+
   iniciar() {
     this.#intervalo = window.setInterval(() => this.#revisar(), VigilanteDeSesion.INTERVALO_MS);
     document.addEventListener("visibilitychange", this.#alVolver);
@@ -111,7 +140,7 @@ class VigilanteDeSesion {
     if (this.#revisando || this.#intervalo === null) return;
     this.#revisando = true;
     try {
-      await this.#funciones.llamar("feed-videos", { metodo: "GET", pase: this.#pase, consulta: { accion: "solo_verificar" } });
+      await VigilanteDeSesion.estado(this.#funciones, this.#pase);
     } catch (e) {
       if (e instanceof ErrorSinPase) {
         this.detener();
@@ -220,6 +249,230 @@ class PantallaDeAcceso {
     } finally {
       this.#enviando = false;
       this.#boton.disabled = false;
+    }
+  }
+
+  #mostrarError(texto) {
+    this.#error.textContent = texto;
+    this.#error.hidden = !texto;
+  }
+}
+
+/** Pinta el aviso de privacidad (bloques de aviso-privacidad.js) solo con nodos y textContent. */
+class RenderizadorDeAviso {
+  static ETIQUETAS = Object.freeze({ titulo: "h1", fecha: "p", seccion: "h2", subtitulo: "h3", parrafo: "p" });
+
+  static pintar(contenedor, bloques) {
+    const nodos = bloques.map((b) => {
+      if (b.tipo === "lista") {
+        const ul = document.createElement("ul");
+        for (const texto of b.elementos) {
+          const li = document.createElement("li");
+          li.textContent = texto;
+          ul.append(li);
+        }
+        return ul;
+      }
+      const etiqueta = RenderizadorDeAviso.ETIQUETAS[b.tipo];
+      if (!etiqueta) throw new Error("bloque");
+      const nodo = document.createElement(etiqueta);
+      nodo.className = `aviso-${b.tipo}`;
+      nodo.textContent = b.texto;
+      return nodo;
+    });
+    contenedor.replaceChildren(...nodos);
+  }
+}
+
+/**
+ * Reglas de los datos del participante. Son las mismas que aplica "registrar-participante"; el
+ * servidor vuelve a validarlas, esto solo evita enviar algo que de antemano se sabe inválido.
+ */
+class ValidadorDeRegistro {
+  static PROHIBIDOS = /[<>"&]/;
+  static CONTROL = /\p{Cc}/u;
+  static CAMPOS = Object.freeze({
+    matricula: { maximo: 15, mensaje: "Escribe tu matrícula: de 6 a 15 letras o números, sin espacios ni guiones." },
+    nombre: { maximo: 40, mensaje: "Escribe tu nombre de pila (hasta 40 caracteres, sin < > \" &)." },
+    carrera: { maximo: 60, mensaje: "Escribe tu carrera (hasta 60 caracteres, sin < > \" &)." },
+  });
+
+  static matricula(valor) {
+    return String(valor ?? "").trim().toUpperCase();
+  }
+
+  static texto(valor) {
+    return String(valor ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
+  }
+
+  static #textoValido(texto, maximo) {
+    const largo = [...texto].length;
+    return largo >= 1 && largo <= maximo && !ValidadorDeRegistro.PROHIBIDOS.test(texto) && !ValidadorDeRegistro.CONTROL.test(texto);
+  }
+
+  /** { datos, campos }: datos listos para enviar y la lista de campos inválidos (vacía si todo está bien). */
+  static validar({ matricula, nombre, carrera }) {
+    const datos = {
+      matricula: ValidadorDeRegistro.matricula(matricula),
+      nombre: ValidadorDeRegistro.texto(nombre),
+      carrera: ValidadorDeRegistro.texto(carrera),
+    };
+    const campos = [];
+    if (!/^[A-Z0-9]{6,15}$/.test(datos.matricula)) campos.push("matricula");
+    if (!ValidadorDeRegistro.#textoValido(datos.nombre, 40)) campos.push("nombre");
+    if (!ValidadorDeRegistro.#textoValido(datos.carrera, 60)) campos.push("carrera");
+    return { datos, campos };
+  }
+}
+
+/**
+ * Pantalla de registro: pestañas "Aviso de privacidad" y "Tus datos", y debajo (visibles en ambas) la
+ * casilla de aceptación y el botón "Estoy de acuerdo", que solo se activa con la casilla marcada.
+ * Los datos solo viven en los campos y en la petición: al terminar (o al cerrar la sesión) se borran.
+ */
+class PantallaDeRegistro {
+  static MENSAJE_FALLA = "No se pudo completar el registro. Intenta de nuevo.";
+  static MENSAJE_VERSION = "El aviso de privacidad cambió. Recarga la página para leer la versión vigente.";
+
+  #funciones;
+  #pase = null;
+  #alRegistrarse;
+  #alPerderPase;
+  #enviando = false;
+  #seccion = document.getElementById("registro");
+  #pestanas = [document.getElementById("tab-aviso"), document.getElementById("tab-datos")];
+  #panelAviso = document.getElementById("panel-aviso");
+  #panelDatos = document.getElementById("panel-datos");
+  #acepto = document.getElementById("reg-acepto");
+  #boton = document.getElementById("reg-enviar");
+  #error = document.getElementById("reg-error");
+  #campos = Object.fromEntries(Object.keys(ValidadorDeRegistro.CAMPOS).map((nombre) => [nombre, {
+    entrada: document.getElementById(`reg-${nombre}`),
+    error: document.getElementById(`reg-${nombre}-error`),
+    contador: document.getElementById(`reg-${nombre}-contador`),
+  }]));
+
+  constructor(funciones, alRegistrarse, alPerderPase) {
+    this.#funciones = funciones;
+    this.#alRegistrarse = alRegistrarse;
+    this.#alPerderPase = alPerderPase;
+    RenderizadorDeAviso.pintar(this.#panelAviso, AVISO_PRIVACIDAD.BLOQUES);
+    this.#pestanas.forEach((tab, i) => {
+      tab.addEventListener("click", () => this.#elegir(i));
+      tab.addEventListener("keydown", (e) => this.#teclaPestana(e, i));
+    });
+    this.#acepto.addEventListener("change", () => this.#actualizarBoton());
+    this.#boton.addEventListener("click", () => this.#enviar());
+    this.#panelDatos.addEventListener("submit", (e) => { e.preventDefault(); this.#enviar(); });
+    for (const [nombre, campo] of Object.entries(this.#campos)) {
+      campo.entrada.addEventListener("input", () => {
+        this.#contar(nombre);
+        this.#marcar(nombre, false);
+      });
+    }
+  }
+
+  mostrar(pase) {
+    this.#pase = pase;
+    this.limpiar();
+    this.#seccion.hidden = false;
+    this.#elegir(0, false);
+    this.#panelAviso.scrollTop = 0;
+  }
+
+  ocultar() {
+    this.#seccion.hidden = true;
+  }
+
+  /** Borra todo lo escrito (datos personales incluidos) y deja la pantalla como nueva. */
+  limpiar() {
+    for (const nombre of Object.keys(this.#campos)) {
+      this.#campos[nombre].entrada.value = "";
+      this.#contar(nombre);
+      this.#marcar(nombre, false);
+    }
+    this.#acepto.checked = false;
+    this.#mostrarError("");
+    this.#actualizarBoton();
+  }
+
+  #elegir(i, enfocar = true) {
+    this.#pestanas.forEach((tab, j) => {
+      tab.setAttribute("aria-selected", String(i === j));
+      tab.tabIndex = i === j ? 0 : -1;
+    });
+    this.#panelAviso.hidden = i !== 0;
+    this.#panelDatos.hidden = i !== 1;
+    if (enfocar) this.#pestanas[i].focus();
+  }
+
+  #teclaPestana(e, i) {
+    const total = this.#pestanas.length;
+    const destino = { ArrowRight: (i + 1) % total, ArrowLeft: (i - 1 + total) % total, Home: 0, End: total - 1 }[e.key];
+    if (destino === undefined) return;
+    e.preventDefault();
+    this.#elegir(destino);
+  }
+
+  #actualizarBoton() {
+    this.#boton.disabled = this.#enviando || !this.#acepto.checked;
+  }
+
+  #contar(nombre) {
+    const { entrada, contador } = this.#campos[nombre];
+    contador.textContent = `${[...entrada.value].length}/${ValidadorDeRegistro.CAMPOS[nombre].maximo}`;
+  }
+
+  #marcar(nombre, invalido) {
+    const { entrada, error } = this.#campos[nombre];
+    entrada.setAttribute("aria-invalid", String(invalido));
+    error.textContent = invalido ? ValidadorDeRegistro.CAMPOS[nombre].mensaje : "";
+    error.hidden = !invalido;
+  }
+
+  /** Marca los campos inválidos, pasa a "Tus datos" y enfoca el primero. */
+  #mostrarInvalidos(campos) {
+    for (const nombre of Object.keys(this.#campos)) this.#marcar(nombre, campos.includes(nombre));
+    const primero = Object.keys(this.#campos).find((n) => campos.includes(n));
+    if (!primero) return;
+    this.#elegir(1, false);
+    this.#campos[primero].entrada.focus();
+  }
+
+  async #enviar() {
+    if (this.#enviando || !this.#acepto.checked || !this.#pase) return;
+    this.#enviando = true;
+    this.#actualizarBoton();
+    this.#mostrarError("");
+    try {
+      const { datos, campos } = ValidadorDeRegistro.validar({
+        matricula: this.#campos.matricula.entrada.value,
+        nombre: this.#campos.nombre.entrada.value,
+        carrera: this.#campos.carrera.entrada.value,
+      });
+      if (campos.length) {
+        this.#mostrarInvalidos(campos);
+        return;
+      }
+      for (const nombre of Object.keys(this.#campos)) this.#marcar(nombre, false);
+      await this.#funciones.llamar("registrar-participante", {
+        cuerpo: { ...datos, version_terminos: AVISO_PRIVACIDAD.VERSION },
+        pase: this.#pase,
+      });
+      this.limpiar();
+      this.#alRegistrarse();
+    } catch (e) {
+      if (e instanceof ErrorSinPase) { this.#alPerderPase(); return; }
+      if (e instanceof ErrorDatosInvalidos) {
+        if (e.campos.includes("version_terminos")) this.#mostrarError(PantallaDeRegistro.MENSAJE_VERSION);
+        else if (e.campos.length) this.#mostrarInvalidos(e.campos);
+        else this.#mostrarError(PantallaDeRegistro.MENSAJE_FALLA);
+        return;
+      }
+      this.#mostrarError(PantallaDeRegistro.MENSAJE_FALLA);
+    } finally {
+      this.#enviando = false;
+      this.#actualizarBoton();
     }
   }
 
@@ -558,9 +811,12 @@ class FeedPagina {
   #observador = null;
   #escuchas = new AbortController(); // permite quitar todos los escuchadores al vaciar
 
-  constructor(repo, alPerderPase) {
+  #alFaltarRegistro;
+
+  constructor(repo, alPerderPase, alFaltarRegistro) {
     this.#repo = repo;
     this.#alPerderPase = alPerderPase;
+    this.#alFaltarRegistro = alFaltarRegistro;
   }
 
   /** El servidor rechazó el pase (vencido o alterado): se detiene todo y se vuelve al acceso. */
@@ -591,6 +847,7 @@ class FeedPagina {
       filas = await this.#repo.listarPublicados();
     } catch (e) {
       if (e instanceof ErrorSinPase) { this.perderPase(); return; }
+      if (e instanceof ErrorFaltaRegistro) { this.#alFaltarRegistro(); return; }
       this.#mostrarEstado("No se pudieron cargar los videos. Recarga la página.");
       return;
     }
@@ -661,50 +918,94 @@ class FeedPagina {
   }
 }
 
-/** Arranque: sin pase solo existe la pantalla de acceso; con pase, el feed y su vigilante. */
+/**
+ * Arranque y flujo: código → aviso y datos → feed. Sin pase solo existe la pantalla de acceso; con
+ * pase, el vigilante revisa la sesión todo el tiempo (también durante el registro).
+ */
 class AppFeed {
   static AVISO_SESION_CERRADA = "Tu sesión se cerró";
+  static PANTALLAS_FEED = ["cabecera", "nav", "feed"];
 
   #funciones;
   #almacen = new AlmacenDePase();
   #acceso;
+  #registro;
+  #pase = null;
   #pagina = null;
   #vigilante = null;
 
   constructor(config) {
     this.#funciones = new ClienteFunciones(config);
     this.#acceso = new PantallaDeAcceso(this.#funciones, (pase) => this.#entrar(pase));
+    this.#registro = new PantallaDeRegistro(this.#funciones, () => this.#mostrarFeed(), () => this.#cerrarSesion());
   }
 
   iniciar() {
     const pase = this.#almacen.leer();
-    if (pase) this.#mostrarFeed(pase);
+    if (pase) this.#reanudar(pase);
     else this.#acceso.mostrar();
   }
 
+  /** Código válido: se guarda el pase y se pasa al aviso y los datos. */
   #entrar(pase) {
     this.#almacen.guardar(pase);
     this.#acceso.ocultar();
-    this.#mostrarFeed(pase);
+    this.#abrirSesion(pase);
+    this.#registro.mostrar(pase);
   }
 
-  #mostrarFeed(pase) {
-    for (const id of ["cabecera", "nav", "feed"]) document.getElementById(id).hidden = false;
-    this.#pagina = new FeedPagina(new FeedRepositorio(this.#funciones, pase), () => this.#cerrarSesion());
+  /** Recarga con un pase guardado: el servidor dice si falta el registro o si ya puede ver el feed. */
+  async #reanudar(pase) {
+    this.#abrirSesion(pase);
+    try {
+      const { registrada } = await VigilanteDeSesion.estado(this.#funciones, pase);
+      if (this.#pase !== pase) return;
+      if (registrada) this.#mostrarFeed();
+      else this.#registro.mostrar(pase);
+    } catch (e) {
+      if (this.#pase !== pase) return;
+      if (e instanceof ErrorSinPase) this.#cerrarSesion();
+      else this.#mostrarFeed(); // red o servidor: el feed lo intenta y, si falta el registro, regresa a él
+    }
+  }
+
+  #abrirSesion(pase) {
+    this.#pase = pase;
     this.#vigilante = new VigilanteDeSesion(this.#funciones, pase, () => this.#cerrarSesion());
-    this.#pagina.iniciar();
     this.#vigilante.iniciar();
   }
 
-  /** Pase rechazado (vencido o sesiones cerradas): borra el pase, vacía el feed y vuelve al acceso. */
+  #mostrarFeed() {
+    if (!this.#pase || this.#pagina) return;
+    this.#registro.ocultar();
+    for (const id of AppFeed.PANTALLAS_FEED) document.getElementById(id).hidden = false;
+    this.#pagina = new FeedPagina(new FeedRepositorio(this.#funciones, this.#pase), () => this.#cerrarSesion(), () => this.#volverARegistro());
+    this.#pagina.iniciar();
+  }
+
+  /** El servidor dice que la sesión aún no se registra: se quita el feed y se muestra el registro. */
+  #volverARegistro() {
+    if (!this.#pase) return;
+    this.#quitarFeed();
+    this.#registro.mostrar(this.#pase);
+  }
+
+  #quitarFeed() {
+    this.#pagina?.vaciar();
+    this.#pagina = null;
+    for (const id of AppFeed.PANTALLAS_FEED) document.getElementById(id).hidden = true;
+  }
+
+  /** Pase rechazado (vencido o sesiones cerradas): borra el pase y lo escrito, y vuelve al acceso. */
   #cerrarSesion() {
-    if (!this.#pagina) return; // ya se cerró (pueden avisar el vigilante y una llamada a la vez)
+    if (!this.#pase) return; // ya se cerró (pueden avisar el vigilante y una llamada a la vez)
+    this.#pase = null;
     this.#almacen.borrar();
     this.#vigilante?.detener();
-    this.#pagina.vaciar();
-    this.#pagina = null;
     this.#vigilante = null;
-    for (const id of ["cabecera", "nav", "feed"]) document.getElementById(id).hidden = true;
+    this.#quitarFeed();
+    this.#registro.limpiar();
+    this.#registro.ocultar();
     this.#acceso.mostrar(AppFeed.AVISO_SESION_CERRADA);
   }
 }

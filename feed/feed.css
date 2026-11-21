@@ -272,3 +272,76 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .acceso-tarjeta button:disabled { opacity: .5; cursor: default; }
 .acceso-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
 .acceso-aviso { background: var(--surface-hover); color: var(--text); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
+
+/* ---------- Registro: aviso de privacidad y datos del participante ---------- */
+.registro {
+  position: fixed; inset: 0; z-index: 20; background: var(--bg);
+  display: flex; justify-content: center; align-items: center;
+  padding: 16px; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+.registro-tarjeta {
+  width: 100%; max-width: 760px; height: 100%; max-height: 860px; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface); border-radius: var(--radius); overflow: hidden;
+}
+.registro-logo { text-align: center; font-size: 22px; padding: 16px 16px 8px; flex-shrink: 0; }
+
+.registro-pestanas { display: flex; border-bottom: 1px solid #33343a; padding: 0 12px; flex-shrink: 0; }
+.registro-pestanas [role="tab"] {
+  flex: 1; padding: 12px 8px; font-size: 15px; font-weight: 600; color: var(--text-dim);
+  border-bottom: 3px solid transparent; margin-bottom: -1px;
+}
+.registro-pestanas [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.registro-pestanas [role="tab"]:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; border-radius: 6px; }
+
+.registro-panel { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px; }
+.registro-panel:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+
+/* Texto del aviso */
+.registro-aviso { line-height: 1.6; font-size: 15px; color: #dcdce0; }
+.registro-aviso .aviso-titulo { font-size: 21px; line-height: 1.3; color: var(--text); margin-bottom: 4px; }
+.registro-aviso .aviso-fecha { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; }
+.registro-aviso .aviso-seccion { font-size: 17px; color: var(--text); margin: 22px 0 8px; }
+.registro-aviso .aviso-subtitulo { font-size: 15px; color: var(--text); margin: 14px 0 6px; }
+.registro-aviso p { margin: 0 0 10px; }
+.registro-aviso ul { margin: 0 0 12px; padding-left: 22px; }
+.registro-aviso li { margin-bottom: 6px; }
+.registro-aviso li::marker { color: var(--accent); }
+
+/* Campos */
+.registro-datos { display: flex; flex-direction: column; gap: 18px; }
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.campo label { font-size: 14px; font-weight: 600; }
+.campo-ayuda { font-size: 13px; color: var(--text-dim); }
+.campo input {
+  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #33343a;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
+}
+.campo input:focus { outline: 2px solid var(--text); outline-offset: 1px; }
+.campo input[aria-invalid="true"] { border-color: #ff6b81; }
+.campo-pie { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 18px; }
+.campo-error { color: #ffb3c0; font-size: 13px; }
+.campo-contador { margin-left: auto; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+/* Aceptación, siempre visible bajo las pestañas */
+.registro-pie {
+  flex-shrink: 0; display: flex; flex-direction: column; gap: 12px;
+  padding: 16px 24px 20px; border-top: 1px solid #33343a; background: var(--surface);
+}
+.registro-casilla { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; cursor: pointer; }
+.registro-casilla input { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.registro-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.registro-boton {
+  align-self: flex-end; min-width: 200px; padding: 12px 20px; border-radius: 10px;
+  background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+}
+.registro-boton:disabled { opacity: .45; cursor: default; }
+.registro-boton:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+@media (max-width: 600px) {
+  .registro { padding: 0; }
+  .registro-tarjeta { max-height: none; border-radius: 0; }
+  .registro-panel { padding: 16px; }
+  .registro-pie { padding: 12px 16px max(16px, env(safe-area-inset-bottom)); }
+  .registro-boton { align-self: stretch; }
+}

@@ -35,7 +35,9 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
 
     const servicio = ClienteRest.deServicio(entorno);
     const sesion = new VerificadorDeSesion(new PaseParticipante(entorno.secreto("TOKEN_SECRETO")), servicio);
-    if (!(await sesion.valida(CanalHttp.bearer(peticion)))) return canal.json(401, { error: "pase_invalido" });
+    // 401 si el pase no vale (vencido, revocado, sin fila); 403 si aún no aceptó el aviso ni dio sus datos.
+    const rechazo = await sesion.rechazo(CanalHttp.bearer(peticion));
+    if (rechazo) return canal.json(rechazo.estado, { error: rechazo.error });
     if (accion === "solo_verificar") return canal.vacio(204);
 
     const videos = await servicio.consultar("videos", {

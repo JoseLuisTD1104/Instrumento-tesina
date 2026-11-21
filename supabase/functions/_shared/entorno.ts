@@ -6,6 +6,9 @@ export type LectorEntorno = (nombre: string) => string | undefined;
 /** Error controlado: su mensaje es una etiqueta fija, sin datos de la petición ni secretos. */
 export class ErrorControlado extends Error {}
 
+/** La base rechazó una inserción por un valor único repetido (HTTP 409 de PostgREST). */
+export class ErrorConflicto extends ErrorControlado {}
+
 export class Entorno {
   #leer: LectorEntorno;
 

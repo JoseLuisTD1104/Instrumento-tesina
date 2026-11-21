@@ -1,7 +1,8 @@
 // Sesiones de participantes:
 // - VerificadorDeSesion: un pase vale solo si su firma, exp y rol son correctos (PaseParticipante), se
 //   emitió después del último "Cerrar todas las sesiones" (sesiones_validas_desde) y su jti tiene una
-//   fila en sesiones_activas sin revocar y sin vencer. El acceso abierto/cerrado NO se revisa aquí.
+//   fila en sesiones_activas sin revocar y sin vencer. Además informa si la sesión ya se registró
+//   (registrada_en). El acceso abierto/cerrado NO se revisa aquí.
 // - RegistroDeSesiones: altas, listado y cierre individual en sesiones_activas (solo clave de servicio).
 import { ErrorControlado } from "./entorno.ts";
 import { PaseParticipante } from "./pase.ts";
@@ -29,12 +30,25 @@ export class RegistroDeSesiones {
     await this.#servicio.borrar(TABLA, { expira_en: `lt.${new Date(ahoraMs - RegistroDeSesiones.RETENCION_VENCIDAS_MS).toISOString()}` });
   }
 
-  /** true si el jti tiene una fila sin revocar y con expira_en futura. Consulta la base cada vez. */
-  async vigente(jti: string, ahoraMs: number): Promise<boolean> {
+  /** La fila sin revocar y con expira_en futura de ese jti, o null. Consulta la base cada vez. */
+  async vigente(jti: string, ahoraMs: number): Promise<{ numero: number; registrada: boolean } | null> {
     const filas = await this.#servicio.consultar(TABLA, {
-      select: "numero", jti: `eq.${jti}`, revocada_en: "is.null", expira_en: `gt.${new Date(ahoraMs).toISOString()}`, limit: "1",
+      select: "numero,registrada_en", jti: `eq.${jti}`, revocada_en: "is.null", expira_en: `gt.${new Date(ahoraMs).toISOString()}`, limit: "1",
     });
-    return filas.length === 1;
+    if (filas.length !== 1) return null;
+    const numero = Number(filas[0].numero);
+    if (!Number.isSafeInteger(numero) || numero < 1) throw new ErrorControlado("sesion_numero_ilegible");
+    return { numero, registrada: filas[0].registrada_en != null };
+  }
+
+  /**
+   * Marca la sesión como registrada y guarda su nombre de pila (lo único que ve el panel).
+   * Solo se llama después de que el insert en participantes tuvo éxito. Lanza si no actualizó la fila.
+   */
+  async marcarRegistrada(numero: number, nombre: string, ahoraMs: number): Promise<void> {
+    const filas = await this.#servicio.actualizar(TABLA, { numero: `eq.${numero}`, registrada_en: "is.null", revocada_en: "is.null", select: "numero" },
+      { registrada_en: new Date(ahoraMs).toISOString(), nombre });
+    if (filas.length !== 1) throw new ErrorControlado("sesion_no_marcada");
   }
 
   /** Sesiones no revocadas y no vencidas, ordenadas por número. Nunca incluye el jti. */
@@ -69,13 +83,14 @@ export class VerificadorDeSesion {
   }
 
   /**
-   * true si el pase es válido y vigente. Lee sesiones_validas_desde y la fila de sesiones_activas en
-   * cada llamada (sin caché). iat va en segundos enteros: solo se acepta si es estrictamente posterior
-   * al cierre; ante la duda por redondeo, se rechaza. Si la base no responde, lanza (falla cerrada).
+   * La sesión del pase si es válido y vigente ({ numero, registrada }); null si no lo es. Lee
+   * sesiones_validas_desde y la fila de sesiones_activas en cada llamada (sin caché). iat va en
+   * segundos enteros: solo se acepta si es estrictamente posterior al cierre; ante la duda por
+   * redondeo, se rechaza. Si la base no responde, lanza (falla cerrada).
    */
-  async valida(token: string | null): Promise<boolean> {
+  async sesion(token: string | null): Promise<{ numero: number; registrada: boolean } | null> {
     const datos = await this.#pase.leer(token);
-    if (!datos) return false;
+    if (!datos) return null;
     const ahora = Date.now();
     const [filas, vigente] = await Promise.all([
       this.#servicio.consultar("config_acceso", { select: "sesiones_validas_desde", id: "eq.1" }),
@@ -83,6 +98,14 @@ export class VerificadorDeSesion {
     ]);
     const desdeMs = Date.parse(String(filas[0]?.sesiones_validas_desde ?? ""));
     if (filas.length !== 1 || !Number.isFinite(desdeMs)) throw new ErrorControlado("sesiones_validas_desde_ilegible");
-    return vigente && datos.iat * 1000 > desdeMs;
+    return vigente && datos.iat * 1000 > desdeMs ? vigente : null;
+  }
+
+  /** Para las funciones del feed: 401 si el pase no vale, 403 si la sesión aún no se registró, o null. */
+  async rechazo(token: string | null): Promise<{ estado: 401 | 403; error: string } | null> {
+    const s = await this.sesion(token);
+    if (!s) return { estado: 401, error: "pase_invalido" };
+    if (!s.registrada) return { estado: 403, error: "falta_registro" };
+    return null;
   }
 }

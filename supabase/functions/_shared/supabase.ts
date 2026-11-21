@@ -1,6 +1,6 @@
 // Acceso a la API REST de Supabase (PostgREST, Auth y Storage) con fetch.
 // Cada respuesta no exitosa se convierte en un ErrorControlado sin detalles.
-import { Entorno, ErrorControlado } from "./entorno.ts";
+import { Entorno, ErrorConflicto, ErrorControlado } from "./entorno.ts";
 
 type Fila = Record<string, unknown>;
 
@@ -49,6 +49,7 @@ export class ClienteRest {
     const r = await fetch(this.#rest(tabla, {}), {
       method: "POST", headers: { ...this.#cabeceras, Prefer: "return=minimal" }, body: JSON.stringify(fila),
     });
+    if (r.status === 409) throw new ErrorConflicto(`conflicto_${tabla}`);
     if (!r.ok) throw new ErrorControlado(`insercion_${tabla}_${r.status}`);
   }
 
