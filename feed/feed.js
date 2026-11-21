@@ -9,6 +9,10 @@
  * cookies. Todo texto se pinta con nodos y textContent.
  * Cada toque en el feed se manda a "registrar-interaccion" (sin datos personales: el servidor pone el código
  * anónimo). Las métricas y el estado de los botones viven solo en memoria, nunca en el almacenamiento.
+ * La etapa del participante (instrucción, fase a ciegas, siguientes) y el orden de los videos viven solo en
+ * el servidor: al cargar, "feed-videos" dice la etapa y entrega solo el video actual y el siguiente. En la
+ * fase a ciegas solo se avanza: al pasar de video se mide y se manda a "registrar-visualizacion", y el
+ * siguiente aparece cuando el servidor lo confirma. Recargar vuelve al mismo video, nunca a uno anterior.
  */
 
 /** El servidor rechazó el pase (401): hay que volver a la pantalla de acceso. */
@@ -167,6 +171,7 @@ class VigilanteDeSesion {
 /** Datos del feed, siempre con el pase. */
 class FeedRepositorio {
   static RUTA_IMAGEN = /^(perfiles|portadas|comentarios)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
+  static MAX_VIDEOS = 2;
 
   #funciones;
   #pase;
@@ -176,11 +181,28 @@ class FeedRepositorio {
     this.#pase = pase;
   }
 
-  /** Solo publicados, del más antiguo al más reciente (lo resuelve "feed-videos"). */
-  async listarPublicados() {
+  /** { etapa, posicion, total } con el formato esperado; si no, lanza. */
+  static #avance(datos) {
+    if (typeof datos?.etapa !== "string" || !Number.isInteger(datos.posicion) || !Number.isInteger(datos.total)) throw new Error("avance");
+    return { etapa: datos.etapa, posicion: datos.posicion, total: datos.total };
+  }
+
+  /** { etapa, posicion, total, videos }: en la fase a ciegas, solo el video actual y el siguiente. */
+  async estado() {
     const datos = await this.#funciones.llamar("feed-videos", { metodo: "GET", pase: this.#pase });
-    if (!Array.isArray(datos)) throw new Error("lista");
-    return datos;
+    const avance = FeedRepositorio.#avance(datos);
+    if (!Array.isArray(datos.videos) || datos.videos.length > FeedRepositorio.MAX_VIDEOS) throw new Error("videos");
+    return { ...avance, videos: datos.videos };
+  }
+
+  /** De la instrucción a la fase a ciegas (204 sin cuerpo). */
+  async comenzar() {
+    await this.#funciones.llamar("avanzar-etapa", { cuerpo: { accion: "comenzar" }, pase: this.#pase });
+  }
+
+  /** Medición del video actual; devuelve { etapa, posicion, total } ya avanzados por el servidor. */
+  async registrarVisualizacion(cuerpo) {
+    return FeedRepositorio.#avance(await this.#funciones.llamar("registrar-visualizacion", { cuerpo, pase: this.#pase }));
   }
 
   urlImagen(ruta) {
@@ -311,6 +333,8 @@ class ValidadorDeRegistro {
     matricula: { maximo: 15, mensaje: "Escribe tu matrícula: de 6 a 15 letras o números, sin espacios ni guiones." },
     nombre: { maximo: 40, mensaje: "Escribe tu nombre de pila (hasta 40 caracteres, sin < > \" &)." },
     carrera: { maximo: 60, mensaje: "Escribe tu carrera (hasta 60 caracteres, sin < > \" &)." },
+    edad: { minimo: 17, maximo: 99, mensaje: "Escribe tu edad: un número entero de 17 a 99." },
+    semestre: { minimo: 1, maximo: 14, mensaje: "Escribe tu semestre: un número entero del 1 al 14." },
   });
 
   static matricula(valor) {
@@ -321,22 +345,35 @@ class ValidadorDeRegistro {
     return String(valor ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
   }
 
+  /** Entero de 1 o 2 cifras dentro del rango, o null. */
+  static entero(valor, minimo, maximo) {
+    const texto = String(valor ?? "").trim();
+    if (!/^\d{1,2}$/.test(texto)) return null;
+    const n = Number(texto);
+    return n >= minimo && n <= maximo ? n : null;
+  }
+
   static #textoValido(texto, maximo) {
     const largo = [...texto].length;
     return largo >= 1 && largo <= maximo && !ValidadorDeRegistro.PROHIBIDOS.test(texto) && !ValidadorDeRegistro.CONTROL.test(texto);
   }
 
   /** { datos, campos }: datos listos para enviar y la lista de campos inválidos (vacía si todo está bien). */
-  static validar({ matricula, nombre, carrera }) {
+  static validar({ matricula, nombre, carrera, edad, semestre }) {
+    const { edad: reglaEdad, semestre: reglaSemestre } = ValidadorDeRegistro.CAMPOS;
     const datos = {
       matricula: ValidadorDeRegistro.matricula(matricula),
       nombre: ValidadorDeRegistro.texto(nombre),
       carrera: ValidadorDeRegistro.texto(carrera),
+      edad: ValidadorDeRegistro.entero(edad, reglaEdad.minimo, reglaEdad.maximo),
+      semestre: ValidadorDeRegistro.entero(semestre, reglaSemestre.minimo, reglaSemestre.maximo),
     };
     const campos = [];
     if (!/^[A-Z0-9]{6,15}$/.test(datos.matricula)) campos.push("matricula");
     if (!ValidadorDeRegistro.#textoValido(datos.nombre, 40)) campos.push("nombre");
     if (!ValidadorDeRegistro.#textoValido(datos.carrera, 60)) campos.push("carrera");
+    if (datos.edad === null) campos.push("edad");
+    if (datos.semestre === null) campos.push("semestre");
     return { datos, campos };
   }
 }
@@ -436,6 +473,7 @@ class PantallaDeRegistro {
 
   #contar(nombre) {
     const { entrada, contador } = this.#campos[nombre];
+    if (!contador) return; // edad y semestre no llevan contador
     contador.textContent = `${[...entrada.value].length}/${ValidadorDeRegistro.CAMPOS[nombre].maximo}`;
   }
 
@@ -461,18 +499,16 @@ class PantallaDeRegistro {
     this.#actualizarBoton();
     this.#mostrarError("");
     try {
-      const { datos, campos } = ValidadorDeRegistro.validar({
-        matricula: this.#campos.matricula.entrada.value,
-        nombre: this.#campos.nombre.entrada.value,
-        carrera: this.#campos.carrera.entrada.value,
-      });
+      const { datos, campos } = ValidadorDeRegistro.validar(
+        Object.fromEntries(Object.entries(this.#campos).map(([nombre, campo]) => [nombre, campo.entrada.value])),
+      );
       if (campos.length) {
         this.#mostrarInvalidos(campos);
         return;
       }
       for (const nombre of Object.keys(this.#campos)) this.#marcar(nombre, false);
       await this.#funciones.llamar("registrar-participante", {
-        cuerpo: { ...datos, version_terminos: AVISO_PRIVACIDAD.VERSION },
+        cuerpo: { ...datos, version_terminos: AVISO_PRIVACIDAD.VERSION, acepto: true },
         pase: this.#pase,
       });
       this.limpiar();
@@ -621,16 +657,46 @@ class FormatoContador {
 }
 
 /**
- * Manda las interacciones a "registrar-interaccion" sin bloquear la interfaz. Si una falla por red o por
- * el servidor, la reintenta hasta 3 veces con espera creciente y luego la descarta en silencio. Los
- * rechazos definitivos (pase, registro o datos) no se reintentan. Nada se guarda en el navegador.
+ * Política común de reintentos: hasta 3 reintentos con espera creciente (1, 2 y 4 s), solo ante fallos
+ * transitorios (red, 5xx o 429). Los rechazos definitivos (pase, registro o datos) no se reintentan.
+ */
+class Reintentos {
+  static ESPERAS_MS = [1000, 2000, 4000];
+
+  static reintentable(error) {
+    if (error instanceof ErrorSinPase || error instanceof ErrorFaltaRegistro) return false;
+    if (error instanceof ErrorDeServicio) return error.estado >= 500 || error.estado === 429;
+    return true; // red
+  }
+
+  static esperar(ms) {
+    return new Promise((resolver) => window.setTimeout(resolver, ms));
+  }
+
+  /** Ejecuta `tarea` con reintentos mientras `seguir()` sea true; si se agotan, lanza el último error. */
+  static async ejecutar(tarea, seguir = () => true) {
+    for (let intento = 0; ; intento++) {
+      try {
+        return await tarea();
+      } catch (e) {
+        if (!seguir() || !Reintentos.reintentable(e) || intento >= Reintentos.ESPERAS_MS.length) throw e;
+        await Reintentos.esperar(Reintentos.ESPERAS_MS[intento]);
+        if (!seguir()) throw e;
+      }
+    }
+  }
+}
+
+/**
+ * Manda las interacciones a "registrar-interaccion" sin bloquear la interfaz, con la política de
+ * Reintentos; si se agotan, la descarta en silencio. Nada se guarda en el navegador.
  */
 class EnviadorDeInteracciones {
-  static ESPERAS_MS = [1000, 2000, 4000];
+  static ESPERA_MAXIMA_MS = 2500;
 
   #repo;
   #activo = true;
-  #esperas = new Set();
+  #pendientes = new Set();
 
   constructor(repo) {
     this.#repo = repo;
@@ -638,31 +704,99 @@ class EnviadorDeInteracciones {
 
   registrar(videoId, tipo, tiempoVideoMs, extra = {}) {
     if (!this.#activo) return;
-    this.#intentar({ video_id: videoId, tipo, tiempo_video_ms: tiempoVideoMs, ...extra }, 0);
+    const cuerpo = { video_id: videoId, tipo, tiempo_video_ms: tiempoVideoMs, ...extra };
+    const envio = Reintentos.ejecutar(() => this.#repo.registrarInteraccion(cuerpo), () => this.#activo).catch(() => {});
+    this.#pendientes.add(envio);
+    envio.finally(() => this.#pendientes.delete(envio));
+  }
+
+  /**
+   * Espera (hasta 2.5 s) a que lleguen las interacciones en curso: el servidor solo las acepta del video
+   * actual, así que deben llegar antes de avisar que se pasó al siguiente.
+   */
+  async esperarPendientes() {
+    if (!this.#pendientes.size) return;
+    await Promise.race([Promise.allSettled([...this.#pendientes]), Reintentos.esperar(EnviadorDeInteracciones.ESPERA_MAXIMA_MS)]);
   }
 
   /** Al cerrarse la sesión: no se manda ni se reintenta nada más. */
   detener() {
     this.#activo = false;
-    for (const t of this.#esperas) window.clearTimeout(t);
-    this.#esperas.clear();
+  }
+}
+
+/** Acumula milisegundos de tramos abiertos y cerrados (con performance.now, inmune a cambios de hora). */
+class Cronometro {
+  #acumulado = 0;
+  #desde = null;
+
+  iniciar() { this.#desde ??= performance.now(); }
+
+  parar() {
+    if (this.#desde !== null) this.#acumulado += performance.now() - this.#desde;
+    this.#desde = null;
   }
 
-  #intentar(cuerpo, reintento) {
-    this.#repo.registrarInteraccion(cuerpo).catch((e) => {
-      if (!this.#activo || !EnviadorDeInteracciones.#reintentable(e) || reintento >= EnviadorDeInteracciones.ESPERAS_MS.length) return;
-      const t = window.setTimeout(() => {
-        this.#esperas.delete(t);
-        this.#intentar(cuerpo, reintento + 1);
-      }, EnviadorDeInteracciones.ESPERAS_MS[reintento]);
-      this.#esperas.add(t);
-    });
+  get ms() { return this.#acumulado + (this.#desde === null ? 0 : performance.now() - this.#desde); }
+}
+
+/**
+ * Medición de un video mientras es el actual: tiempo en pantalla (sin contar la pestaña oculta, con la
+ * API de visibilidad), tiempo realmente reproduciéndose y si llegó al final al menos una vez (el video
+ * se repite en bucle, así que también cuenta volver a empezar desde el final). Solo vive en memoria.
+ */
+class MedidorDeVisualizacion {
+  static MAX_MS = 3_600_000;
+  static MARGEN_FINAL_S = 0.3;
+
+  #video;
+  #escuchas = null;
+  #pantalla = new Cronometro();
+  #reproduccion = new Cronometro();
+  #completo = false;
+  #ultimoTiempo = 0;
+
+  constructor(video) {
+    this.#video = video;
   }
 
-  static #reintentable(error) {
-    if (error instanceof ErrorSinPase || error instanceof ErrorFaltaRegistro) return false;
-    if (error instanceof ErrorDeServicio) return error.estado >= 500 || error.estado === 429;
-    return true; // red
+  iniciar() {
+    if (this.#escuchas) return;
+    this.#escuchas = new AbortController();
+    const opciones = { signal: this.#escuchas.signal };
+    const v = this.#video;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") this.#pantalla.iniciar();
+      else this.#pantalla.parar();
+    }, opciones);
+    if (document.visibilityState === "visible") this.#pantalla.iniciar();
+    v.addEventListener("playing", () => this.#reproduccion.iniciar(), opciones);
+    for (const evento of ["pause", "waiting", "ended", "emptied", "error"]) {
+      v.addEventListener(evento, () => this.#reproduccion.parar(), opciones);
+    }
+    v.addEventListener("ended", () => { this.#completo = true; }, opciones);
+    v.addEventListener("timeupdate", () => this.#revisarFinal(), opciones);
+    if (!v.paused && v.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.#reproduccion.iniciar();
+  }
+
+  /** Cierra la medición y devuelve { tiempo_pantalla_ms, reproduccion_ms, completo } en enteros válidos. */
+  terminar() {
+    this.#revisarFinal();
+    this.#pantalla.parar();
+    this.#reproduccion.parar();
+    this.#escuchas?.abort();
+    this.#escuchas = null;
+    const acotar = (ms) => Math.min(MedidorDeVisualizacion.MAX_MS, Math.max(0, Math.round(ms)));
+    return { tiempo_pantalla_ms: acotar(this.#pantalla.ms), reproduccion_ms: acotar(this.#reproduccion.ms), completo: this.#completo };
+  }
+
+  #revisarFinal() {
+    const { duration: d, currentTime: t } = this.#video;
+    if (Number.isFinite(d) && d > 0) {
+      if (t >= d - MedidorDeVisualizacion.MARGEN_FINAL_S) this.#completo = true;
+      else if (t + 0.5 < this.#ultimoTiempo && this.#ultimoTiempo >= d - 1) this.#completo = true; // dio la vuelta
+    }
+    this.#ultimoTiempo = t || 0;
   }
 }
 
@@ -954,7 +1088,10 @@ class VentanaSimulada {
   }
 }
 
-/** Un video del feed: pide su URL firmada, la renueva al caducar y bloquea menús y descargas. */
+/**
+ * Un video del feed: pide su URL firmada, la renueva al caducar, bloquea menús y descargas y mide su
+ * visualización mientras es el actual.
+ */
 class VideoDelFeed {
   static MARGEN_MS = 20_000; // se pide una URL nueva si a la actual le quedan menos de 20 s
 
@@ -970,6 +1107,7 @@ class VideoDelFeed {
   #ventana = null;
   #aviso;
   #progreso;
+  #medidor;
   #firma = null;
   #pidiendo = null;
   #reintentos = 0;
@@ -988,6 +1126,7 @@ class VideoDelFeed {
     this.#player = this.raiz.querySelector(".player");
     this.#aviso = this.raiz.querySelector("[data-aviso]");
     this.#progreso = this.raiz.querySelector("[data-progreso]");
+    this.#medidor = new MedidorDeVisualizacion(this.#video);
     this.#pintarDatos();
     this.#barra = BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"), () => this.#abrirEnlace());
     this.#protegerVideo();
@@ -997,9 +1136,11 @@ class VideoDelFeed {
 
   get id() { return this.#datos.id; }
 
+  /** Pasa a ser el video actual: empieza a medirse y a reproducirse. */
   async activar() {
     this.#activo = true;
     this.#pausadoPorUsuario = false;
+    this.#medidor.iniciar();
     await this.#asegurarFuente();
     if (this.#activo) this.#reproducir();
   }
@@ -1011,14 +1152,22 @@ class VideoDelFeed {
     this.#menu.cerrar();
   }
 
+  /** Se pasa al siguiente: cierra la medición, detiene el video y devuelve lo medido. */
+  terminar() {
+    const medicion = this.#medidor.terminar();
+    this.desactivar();
+    return medicion;
+  }
+
   /** Precarga la URL del siguiente video para que empiece sin espera. */
   async precargar() {
     if (!this.#activo) await this.#asegurarFuente(false);
   }
 
-  /** Al cerrarse la sesión: detiene el video y suelta su URL firmada. */
+  /** Al salir de pantalla o cerrarse la sesión: detiene el video, suelta su URL firmada y lo quita. */
   destruir() {
     this.#destruido = true;
+    this.#medidor.terminar();
     this.#activo = false;
     this.#comentarios.cerrar();
     this.#menu.cerrar();
@@ -1027,14 +1176,7 @@ class VideoDelFeed {
     this.#video.removeAttribute("src");
     this.#video.load();
     this.#firma = null;
-  }
-
-  /** Suelta la URL cuando el video queda lejos: menos tiempo expuesta y menos memoria. */
-  liberar() {
-    if (this.#activo || !this.#video.getAttribute("src")) return;
-    this.#video.removeAttribute("src");
-    this.#video.load();
-    this.#firma = null;
+    this.raiz.remove();
   }
 
   aplicarSonido(conSonido) {
@@ -1244,151 +1386,306 @@ class VideoDelFeed {
   }
 }
 
-/** Página del feed: arma la cola, activa el video visible y maneja la navegación. */
-class FeedPagina {
+/**
+ * Fase a ciegas: un video a la vez y solo hacia adelante. En el DOM solo están el video actual y el
+ * siguiente (precargado y oculto); el anterior se destruye al confirmarse el paso. No hay forma de volver:
+ * ni botón, ni flecha, ni gesto, ni teclado, ni rueda. Al pasar, la medición del actual se manda a
+ * "registrar-visualizacion" y el siguiente se muestra cuando el servidor confirma; luego se pide a
+ * "feed-videos" el que sigue. Si algo falla tras los reintentos, solo se muestra un mensaje genérico.
+ */
+class FeedACiegas {
+  static MENSAJE_FALLO = "Algo salió mal. Recarga la página.";
+  static UMBRAL_DESLIZAR_PX = 60;
+  static UMBRAL_RUEDA_PX = 40;
+  static PAUSA_RUEDA_MS = 350;
+  static TECLAS_SIGUIENTE = new Set(["ArrowDown", "PageDown"]);
+  static TECLAS_ANTERIOR = new Set(["ArrowUp", "PageUp", "Home", "End"]);
+
   #repo;
+  #metricas;
   #alPerderPase;
+  #alFaltarRegistro;
+  #alTerminar;
   #contenedor = document.getElementById("feed");
   #estado = document.getElementById("feed-estado");
-  #anterior = document.getElementById("nav-anterior");
-  #siguiente = document.getElementById("nav-siguiente");
-  #videos = [];
-  #indice = -1;
+  #espera = document.getElementById("feed-espera");
+  #botonSiguiente = document.getElementById("nav-siguiente");
+  #actual = null;
+  #siguiente = null;
+  #cargaSiguiente = Promise.resolve();
+  #avanzando = false;
+  #terminado = false;
   #conSonido = false;
-  #observador = null;
   #escuchas = new AbortController(); // permite quitar todos los escuchadores al vaciar
-  #metricas;
+  #rueda = { acumulado: 0, bloqueada: false, temporizador: null };
+  #toque = null;
 
-  #alFaltarRegistro;
-
-  constructor(repo, alPerderPase, alFaltarRegistro) {
+  constructor(repo, { alPerderPase, alFaltarRegistro, alTerminar }) {
     this.#repo = repo;
     this.#metricas = new EnviadorDeInteracciones(repo);
     this.#alPerderPase = alPerderPase;
     this.#alFaltarRegistro = alFaltarRegistro;
+    this.#alTerminar = alTerminar;
+  }
+
+  /** `estado` viene de "feed-videos" en la etapa "ciega": videos = [actual, siguiente?]. */
+  iniciar(estado) {
+    document.addEventListener("contextmenu", (e) => {
+      if (e.target.closest?.(".player, video, img")) e.preventDefault();
+    }, { signal: this.#escuchas.signal });
+    const [actual, siguiente] = estado.videos;
+    if (!actual) { this.#fallar(); return; }
+    this.#estado.remove();
+    this.#actual = this.#crear(actual);
+    this.#mostrar(this.#actual, false);
+    if (siguiente) this.#ponerSiguiente(this.#crear(siguiente));
+    this.#conectarNavegacion();
   }
 
   /** El servidor rechazó el pase (vencido o alterado): se detiene todo y se vuelve al acceso. */
   perderPase() {
-    this.#videos.forEach((v) => v.desactivar());
+    this.#actual?.desactivar();
     this.#alPerderPase();
   }
 
-  /** Pausa y quita todos los videos (src y elementos) y los escuchadores. La página queda vacía. */
+  /** Detiene envíos y escuchadores y destruye los videos (src y elementos). La página queda vacía. */
   vaciar() {
+    this.#terminado = true;
     this.#metricas.detener();
     this.#escuchas.abort();
-    this.#observador?.disconnect();
-    this.#videos.forEach((v) => v.destruir());
-    this.#videos = [];
+    window.clearTimeout(this.#rueda.temporizador);
+    this.#quitarVideos();
     this.#estado.textContent = "Cargando videos…";
+    this.#estado.setAttribute("role", "status");
     this.#contenedor.replaceChildren(this.#estado);
-    this.#anterior.disabled = true;
-    this.#siguiente.disabled = true;
-  }
-
-  async iniciar() {
-    // Bloqueo general de arrastre y del menú contextual sobre medios.
-    document.addEventListener("contextmenu", (e) => {
-      if (e.target.closest?.(".player, video, img")) e.preventDefault();
-    }, { signal: this.#escuchas.signal });
-    let filas;
-    try {
-      filas = await this.#repo.listarPublicados();
-    } catch (e) {
-      if (e instanceof ErrorSinPase) { this.perderPase(); return; }
-      if (e instanceof ErrorFaltaRegistro) { this.#alFaltarRegistro(); return; }
-      this.#mostrarEstado("No se pudieron cargar los videos. Recarga la página.");
-      return;
-    }
-    if (this.#escuchas.signal.aborted) return; // la sesión se cerró mientras cargaba
-    if (!filas.length) {
-      this.#mostrarEstado("Todavía no hay videos publicados.");
-      return;
-    }
-    this.#videos = filas.map((d) => new VideoDelFeed(this.#repo, d, this, this.#metricas));
-    this.#estado.remove();
-    this.#contenedor.replaceChildren(...this.#videos.map((v) => v.raiz));
-    this.#videos.forEach((v) => v.aplicarSonido(this.#conSonido));
-    this.#observar();
-    this.#conectarNavegacion();
+    this.#contenedor.removeAttribute("aria-busy");
+    this.#espera.hidden = true;
+    this.#botonSiguiente.disabled = true;
   }
 
   alternarSonido() {
     this.#conSonido = !this.#conSonido;
-    this.#videos.forEach((v) => v.aplicarSonido(this.#conSonido));
+    this.#aplicarSonido();
   }
 
   silenciar() {
     this.#conSonido = false;
-    this.#videos.forEach((v) => v.aplicarSonido(false));
+    this.#aplicarSonido();
   }
 
-  #observar() {
-    const observador = this.#observador = new IntersectionObserver((entradas) => {
-      for (const e of entradas) {
-        if (e.isIntersecting && e.intersectionRatio >= 0.6) this.#activar(this.#videos.findIndex((v) => v.raiz === e.target));
+  #aplicarSonido() {
+    for (const v of [this.#actual, this.#siguiente]) v?.aplicarSonido(this.#conSonido);
+  }
+
+  #crear(datos) {
+    const video = new VideoDelFeed(this.#repo, datos, this, this.#metricas);
+    video.aplicarSonido(this.#conSonido);
+    video.raiz.hidden = true;
+    this.#contenedor.append(video.raiz);
+    return video;
+  }
+
+  #mostrar(video, animar) {
+    video.raiz.hidden = false;
+    if (animar) {
+      video.raiz.classList.add("entrando");
+      video.raiz.addEventListener("animationend", () => video.raiz.classList.remove("entrando"), { once: true });
+    }
+    video.activar();
+    this.#botonSiguiente.disabled = false;
+  }
+
+  #ponerSiguiente(video) {
+    this.#siguiente = video;
+    video.precargar();
+  }
+
+  #quitarVideos() {
+    this.#actual?.destruir();
+    this.#siguiente?.destruir();
+    this.#actual = null;
+    this.#siguiente = null;
+  }
+
+  /** Pide a "feed-videos" el video que sigue al actual. Si falla, el paso siguiente mostrará el error. */
+  async #pedirSiguiente(idActual) {
+    try {
+      const estado = await Reintentos.ejecutar(() => this.#repo.estado(), () => !this.#terminado);
+      if (this.#terminado) return;
+      const [actual, siguiente] = estado.videos;
+      if (estado.etapa !== "ciega" || actual?.id !== idActual || !siguiente) throw new Error("siguiente");
+      this.#ponerSiguiente(this.#crear(siguiente));
+    } catch (e) {
+      if (e instanceof ErrorSinPase && !this.#terminado) this.perderPase();
+    }
+  }
+
+  async #avanzar() {
+    if (this.#avanzando || this.#terminado || !this.#actual || !PilaDeCapas.vacia) return;
+    this.#avanzando = true;
+    this.#botonSiguiente.disabled = true;
+    const actual = this.#actual;
+    const medicion = actual.terminar();
+    this.#espera.hidden = false;
+    this.#contenedor.setAttribute("aria-busy", "true");
+    try {
+      await this.#metricas.esperarPendientes();
+      const avance = await Reintentos.ejecutar(
+        () => this.#repo.registrarVisualizacion({ video_id: actual.id, ...medicion }), () => !this.#terminado);
+      if (this.#terminado) return;
+      if (avance.etapa !== "ciega") { this.#terminado = true; this.#alTerminar(); return; }
+      await this.#cargaSiguiente;
+      const siguiente = this.#siguiente;
+      if (this.#terminado) return;
+      if (!siguiente) throw new Error("siguiente");
+      actual.destruir();
+      this.#actual = siguiente;
+      this.#siguiente = null;
+      this.#mostrar(siguiente, true);
+      this.#cargaSiguiente = avance.posicion + 1 < avance.total ? this.#pedirSiguiente(siguiente.id) : Promise.resolve();
+    } catch (e) {
+      if (this.#terminado) return;
+      if (e instanceof ErrorSinPase) { this.perderPase(); return; }
+      if (e instanceof ErrorFaltaRegistro) { this.#alFaltarRegistro(); return; }
+      this.#fallar();
+    } finally {
+      this.#avanzando = false;
+      if (!this.#terminado) {
+        this.#espera.hidden = true;
+        this.#contenedor.removeAttribute("aria-busy");
       }
-    }, { root: this.#contenedor, threshold: [0.6] });
-    this.#videos.forEach((v) => observador.observe(v.raiz));
+    }
   }
 
-  #activar(i) {
-    if (i < 0 || i === this.#indice) return;
-    this.#indice = i;
-    this.#videos.forEach((v, j) => {
-      if (j === i) v.activar();
-      else {
-        v.desactivar();
-        if (Math.abs(j - i) > 1) v.liberar();
-      }
-    });
-    this.#videos[i + 1]?.precargar();
-    this.#anterior.disabled = i === 0;
-    this.#siguiente.disabled = i === this.#videos.length - 1;
+  /** Error sin detalles técnicos: se quitan los videos y no se puede seguir sin recargar. */
+  #fallar() {
+    this.#terminado = true;
+    this.#metricas.detener();
+    this.#quitarVideos();
+    this.#espera.hidden = true;
+    this.#contenedor.removeAttribute("aria-busy");
+    this.#botonSiguiente.disabled = true;
+    this.#estado.textContent = FeedACiegas.MENSAJE_FALLO;
+    this.#estado.setAttribute("role", "alert");
+    this.#contenedor.replaceChildren(this.#estado);
   }
 
-  #irA(i) {
-    const destino = this.#videos[i];
-    if (destino) destino.raiz.scrollIntoView({ behavior: "smooth", block: "start" });
+  /** Dentro de un panel, menú o ventana, los gestos son de esa capa (p. ej., desplazar comentarios). */
+  static #enCapa(objetivo) {
+    return Boolean(objetivo?.closest?.(".capa, .menu-mas"));
   }
 
   #conectarNavegacion() {
     const opciones = { signal: this.#escuchas.signal };
-    this.#anterior.addEventListener("click", () => this.#irA(this.#indice - 1), opciones);
-    this.#siguiente.addEventListener("click", () => this.#irA(this.#indice + 1), opciones);
+    this.#botonSiguiente.addEventListener("click", () => this.#avanzar(), opciones);
+
     document.addEventListener("keydown", (e) => {
-      if (!PilaDeCapas.vacia) return; // con un panel, menú o ventana abiertos, las flechas no cambian de video
-      if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); this.#irA(this.#indice + 1); }
-      if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); this.#irA(this.#indice - 1); }
+      if (!PilaDeCapas.vacia || e.target.closest?.("input, textarea, select")) return;
+      if (FeedACiegas.TECLAS_SIGUIENTE.has(e.key)) { e.preventDefault(); this.#avanzar(); }
+      else if (FeedACiegas.TECLAS_ANTERIOR.has(e.key)) e.preventDefault(); // nunca hacia atrás
     }, opciones);
+
+    // Rueda o panel táctil: un gesto hacia abajo avanza una sola vez; hacia arriba no hace nada. Tras
+    // avanzar, la rueda se ignora hasta una pausa, para que la inercia no salte videos.
+    this.#contenedor.addEventListener("wheel", (e) => {
+      if (FeedACiegas.#enCapa(e.target)) return;
+      const r = this.#rueda;
+      window.clearTimeout(r.temporizador);
+      r.temporizador = window.setTimeout(() => { r.bloqueada = false; r.acumulado = 0; }, FeedACiegas.PAUSA_RUEDA_MS);
+      if (r.bloqueada || e.deltaY <= 0) return;
+      r.acumulado += e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 16;
+      if (r.acumulado < FeedACiegas.UMBRAL_RUEDA_PX) return;
+      r.bloqueada = true;
+      this.#avanzar();
+    }, { ...opciones, passive: true });
+
+    // Deslizar hacia arriba avanza; hacia abajo no hace nada.
+    this.#contenedor.addEventListener("touchstart", (e) => {
+      this.#toque = e.touches.length === 1 && !FeedACiegas.#enCapa(e.target)
+        ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    }, { ...opciones, passive: true });
+    this.#contenedor.addEventListener("touchend", (e) => {
+      const inicio = this.#toque;
+      this.#toque = null;
+      const fin = e.changedTouches[0];
+      if (!inicio || !fin) return;
+      const dy = inicio.y - fin.clientY;
+      if (dy >= FeedACiegas.UMBRAL_DESLIZAR_PX && dy > Math.abs(inicio.x - fin.clientX)) this.#avanzar();
+    }, { ...opciones, passive: true });
+    this.#contenedor.addEventListener("touchcancel", () => { this.#toque = null; }, opciones);
+  }
+}
+
+/** Pantalla de un solo mensaje (con botón opcional): instrucción y fin provisional de la fase a ciegas. */
+class PantallaDeMensaje {
+  #seccion;
+  #boton;
+  #error;
+  #texto;
+
+  constructor(id, { boton = null, error = null, texto = null, alPulsar = null } = {}) {
+    this.#seccion = document.getElementById(id);
+    this.#boton = boton ? document.getElementById(boton) : null;
+    this.#error = error ? document.getElementById(error) : null;
+    this.#texto = texto ? document.getElementById(texto) : null;
+    this.#boton?.addEventListener("click", () => { if (!this.#boton.disabled) alPulsar?.(); });
   }
 
-  #mostrarEstado(texto) {
-    this.#estado.textContent = texto;
+  mostrar() {
+    this.mostrarError("");
+    this.ocupado(false);
+    this.#seccion.hidden = false;
+    (this.#boton ?? this.#texto)?.focus();
+  }
+
+  ocultar() {
+    this.#seccion.hidden = true;
+  }
+
+  ocupado(si) {
+    if (!this.#boton) return;
+    this.#boton.disabled = si;
+    this.#boton.setAttribute("aria-busy", String(si));
+  }
+
+  mostrarError(texto) {
+    if (!this.#error) return;
+    this.#error.textContent = texto;
+    this.#error.hidden = !texto;
   }
 }
 
 /**
- * Arranque y flujo: código → aviso y datos → feed. Sin pase solo existe la pantalla de acceso; con
- * pase, el vigilante revisa la sesión todo el tiempo (también durante el registro).
+ * Arranque y flujo: código → aviso y datos → (etapa que diga el servidor) instrucción → fase a ciegas →
+ * pantalla provisional. Sin pase solo existe la pantalla de acceso; con pase, el vigilante revisa la sesión
+ * todo el tiempo. La etapa nunca se guarda en el navegador: siempre se pregunta a "feed-videos".
  */
 class AppFeed {
   static AVISO_SESION_CERRADA = "Tu sesión se cerró";
+  static MENSAJE_FALLO = "Algo salió mal. Recarga la página.";
+  static MENSAJE_COMENZAR = "No se pudo continuar. Intenta de nuevo.";
   static PANTALLAS_FEED = ["cabecera", "nav", "feed"];
 
   #funciones;
   #almacen = new AlmacenDePase();
   #acceso;
   #registro;
+  #instruccion;
+  #finCiega;
   #pase = null;
+  #repo = null;
   #pagina = null;
   #vigilante = null;
+  #comenzando = false;
 
   constructor(config) {
     this.#funciones = new ClienteFunciones(config);
     this.#acceso = new PantallaDeAcceso(this.#funciones, (pase) => this.#entrar(pase));
-    this.#registro = new PantallaDeRegistro(this.#funciones, () => this.#mostrarFeed(), () => this.#cerrarSesion());
+    this.#registro = new PantallaDeRegistro(this.#funciones, () => this.#continuar(), () => this.#cerrarSesion());
+    this.#instruccion = new PantallaDeMensaje("instruccion", {
+      boton: "instruccion-comenzar", error: "instruccion-error", alPulsar: () => this.#comenzar(),
+    });
+    this.#finCiega = new PantallaDeMensaje("fin-ciega", { texto: "fin-ciega-texto" });
   }
 
   iniciar() {
@@ -1405,39 +1702,110 @@ class AppFeed {
     this.#registro.mostrar(pase);
   }
 
-  /** Recarga con un pase guardado: el servidor dice si falta el registro o si ya puede ver el feed. */
+  /** Recarga con un pase guardado: el servidor dice si falta el registro o en qué etapa va. */
   async #reanudar(pase) {
     this.#abrirSesion(pase);
     try {
       const { registrada } = await VigilanteDeSesion.estado(this.#funciones, pase);
       if (this.#pase !== pase) return;
-      if (registrada) this.#mostrarFeed();
+      if (registrada) this.#continuar();
       else this.#registro.mostrar(pase);
     } catch (e) {
       if (this.#pase !== pase) return;
       if (e instanceof ErrorSinPase) this.#cerrarSesion();
-      else this.#mostrarFeed(); // red o servidor: el feed lo intenta y, si falta el registro, regresa a él
+      else this.#continuar(); // red o servidor: feed-videos lo intenta y, si falta el registro, regresa a él
     }
   }
 
   #abrirSesion(pase) {
     this.#pase = pase;
+    this.#repo = new FeedRepositorio(this.#funciones, pase);
     this.#vigilante = new VigilanteDeSesion(this.#funciones, pase, () => this.#cerrarSesion());
     this.#vigilante.iniciar();
   }
 
-  #mostrarFeed() {
-    if (!this.#pase || this.#pagina) return;
+  /** Pregunta la etapa al servidor y muestra la pantalla que corresponde. */
+  async #continuar() {
+    const pase = this.#pase;
+    if (!pase) return;
     this.#registro.ocultar();
+    let estado;
+    try {
+      estado = await this.#repo.estado();
+    } catch (e) {
+      if (this.#pase !== pase) return;
+      if (e instanceof ErrorSinPase) this.#cerrarSesion();
+      else if (e instanceof ErrorFaltaRegistro) this.#volverARegistro();
+      else this.#mostrarFallo();
+      return;
+    }
+    if (this.#pase !== pase) return;
+    if (estado.etapa === "instruccion") this.#instruccion.mostrar();
+    else if (estado.etapa === "ciega") this.#mostrarFeed(estado);
+    else this.#mostrarFinCiega();
+  }
+
+  /** "Comenzar": de la instrucción a la fase a ciegas. Ante un rechazo, el servidor decide la etapa. */
+  async #comenzar() {
+    const pase = this.#pase;
+    if (!pase || this.#comenzando) return;
+    this.#comenzando = true;
+    this.#instruccion.ocupado(true);
+    this.#instruccion.mostrarError("");
+    try {
+      await this.#repo.comenzar();
+    } catch (e) {
+      if (this.#pase !== pase) return;
+      if (e instanceof ErrorSinPase) { this.#cerrarSesion(); return; }
+      if (e instanceof ErrorFaltaRegistro) { this.#volverARegistro(); return; }
+      if (!(e instanceof ErrorDeServicio && e.estado === 400)) {
+        this.#instruccion.mostrarError(AppFeed.MENSAJE_COMENZAR);
+        this.#instruccion.ocupado(false);
+        return;
+      }
+    } finally {
+      this.#comenzando = false;
+    }
+    if (this.#pase !== pase) return;
+    this.#instruccion.ocultar();
+    this.#continuar();
+  }
+
+  #mostrarFeed(estado) {
+    if (!this.#pase || this.#pagina) return;
+    this.#instruccion.ocultar();
     for (const id of AppFeed.PANTALLAS_FEED) document.getElementById(id).hidden = false;
-    this.#pagina = new FeedPagina(new FeedRepositorio(this.#funciones, this.#pase), () => this.#cerrarSesion(), () => this.#volverARegistro());
-    this.#pagina.iniciar();
+    this.#pagina = new FeedACiegas(this.#repo, {
+      alPerderPase: () => this.#cerrarSesion(),
+      alFaltarRegistro: () => this.#volverARegistro(),
+      alTerminar: () => this.#mostrarFinCiega(),
+    });
+    this.#pagina.iniciar(estado);
+  }
+
+  /** Pantalla provisional: se reemplazará por la siguiente etapa en la próxima entrega. */
+  #mostrarFinCiega() {
+    this.#quitarFeed();
+    this.#instruccion.ocultar();
+    this.#finCiega.mostrar();
+  }
+
+  /** Error genérico (sin detalles técnicos) cuando no se pudo saber la etapa. */
+  #mostrarFallo() {
+    this.#quitarFeed();
+    this.#instruccion.ocultar();
+    const estado = document.getElementById("feed-estado");
+    estado.textContent = AppFeed.MENSAJE_FALLO;
+    estado.setAttribute("role", "alert");
+    document.getElementById("cabecera").hidden = false;
+    document.getElementById("feed").hidden = false;
   }
 
   /** El servidor dice que la sesión aún no se registra: se quita el feed y se muestra el registro. */
   #volverARegistro() {
     if (!this.#pase) return;
     this.#quitarFeed();
+    this.#instruccion.ocultar();
     this.#registro.mostrar(this.#pase);
   }
 
@@ -1451,10 +1819,13 @@ class AppFeed {
   #cerrarSesion() {
     if (!this.#pase) return; // ya se cerró (pueden avisar el vigilante y una llamada a la vez)
     this.#pase = null;
+    this.#repo = null;
     this.#almacen.borrar();
     this.#vigilante?.detener();
     this.#vigilante = null;
     this.#quitarFeed();
+    this.#instruccion.ocultar();
+    this.#finCiega.ocultar();
     this.#registro.limpiar();
     this.#registro.ocultar();
     this.#acceso.mostrar(AppFeed.AVISO_SESION_CERRADA);

@@ -1,12 +1,17 @@
 // Edge Function "feed-videos" (pública con pase). Con un pase de participante válido (y emitido
-// después del último cierre de sesiones) devuelve solo los videos publicados, en cola por
-// publicado_en, con los campos que usa el feed. Con ?accion=solo_verificar solo valida el pase y
-// responde 204 sin datos. No revisa abierto_hasta: cerrar el acceso solo impide entradas nuevas.
-// Cada video lleva hasta 50 comentarios (usuario, texto, foto_perfil_ruta, color) por creado_en, sin ids.
+// después del último cierre de sesiones) y la sesión registrada devuelve { etapa, posicion, total, videos }.
+// En la etapa "ciega", videos trae solo el video actual y el siguiente del orden guardado del participante
+// (orden_ciego[posicion] y [posicion+1]), nunca el orden completo ni ids de otros videos; si el actual no
+// está disponible, la lista va vacía. En cualquier otra etapa la lista va vacía. Con ?accion=solo_verificar
+// solo valida el pase y responde 204 sin datos. No revisa abierto_hasta: cerrar el acceso solo impide
+// entradas nuevas. Cada video lleva hasta 50 comentarios (usuario, texto, foto_perfil_ruta, color) por
+// creado_en, sin ids.
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
 import { VerificadorDeSesion } from "../_shared/sesiones.ts";
+import { ParticipanteActual } from "../_shared/participante-actual.ts";
+import { FaseCiega } from "../_shared/progreso.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -48,23 +53,31 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if (accion !== null && accion !== "solo_verificar") return canal.json(400, { error: "solicitud_invalida" });
 
     const servicio = ClienteRest.deServicio(entorno);
-    const sesion = new VerificadorDeSesion(new PaseParticipante(entorno.secreto("TOKEN_SECRETO")), servicio);
+    const token = CanalHttp.bearer(peticion);
     // 401 si el pase no vale (vencido, revocado, sin fila); 403 si aún no aceptó el aviso ni dio sus datos.
-    const rechazo = await sesion.rechazo(CanalHttp.bearer(peticion));
-    if (rechazo) return canal.json(rechazo.estado, { error: rechazo.error });
-    if (accion === "solo_verificar") return canal.vacio(204);
+    if (accion === "solo_verificar") {
+      const rechazo = await new VerificadorDeSesion(new PaseParticipante(entorno.secreto("TOKEN_SECRETO")), servicio).rechazo(token);
+      return rechazo ? canal.json(rechazo.estado, { error: rechazo.error }) : canal.vacio(204);
+    }
+    const participante = await new ParticipanteActual(entorno, servicio).abrir(token);
+    if ("rechazo" in participante) return canal.json(participante.rechazo.estado, { error: participante.rechazo.error });
+    const { progreso } = participante;
 
-    const videos = await servicio.consultar("videos", {
-      select: COLUMNAS,
-      publicado: "eq.true",
-      order: "publicado_en.asc.nullslast,id.asc",
-    });
+    const ids = FaseCiega.visibles(progreso);
+    const filas = ids.length
+      ? await servicio.consultar("videos", { select: COLUMNAS, publicado: "eq.true", id: `in.(${ids.join(",")})` })
+      : [];
+    // En el orden guardado y solo los pedidos; si falta el actual, no se entrega ninguno.
+    const porId = new Map(filas.map((f) => [String(f.id).toLowerCase(), f]));
+    const videos = porId.has(ids[0]) ? ids.filter((id) => porId.has(id)).map((id) => porId.get(id)!) : [];
     // Una consulta por video con su propio límite: ningún video se queda sin sus comentarios.
     const conComentarios = await Promise.all(videos.map(async (v) => ({
       ...v,
       comentarios: typeof v.id === "string" ? await comentariosDe(servicio, v.id) : [],
     })));
-    return canal.json(200, conComentarios);
+    return canal.json(200, {
+      etapa: progreso.etapa, posicion: progreso.posicion, total: progreso.orden.length, videos: conComentarios,
+    });
   } catch (e) {
     CanalHttp.registrarError(FUNCION, e);
     return canal.json(503, { error: "servicio_no_disponible" });

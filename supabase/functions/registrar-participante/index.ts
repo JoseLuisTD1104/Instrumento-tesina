@@ -1,13 +1,19 @@
 // Edge Function "registrar-participante" (pública con pase). Recibe los datos de identificación del
-// participante (matrícula, nombre de pila, carrera) y la versión del aviso que aceptó. Los guarda en
-// public.participantes con un código anónimo generado aquí, y solo después marca la sesión como
-// registrada (con su nombre, lo único que ve el panel). No devuelve ni registra ningún dato personal.
+// participante (matrícula, nombre de pila, carrera), su edad y semestre, la versión del aviso y su
+// aceptación (acepto: true). Guarda la identidad en public.participantes con un código anónimo generado
+// aquí; con ese código, carrera, edad y semestre en public.perfil_participante; y en
+// public.progreso_participante la etapa "instruccion" con el orden de la fase a ciegas, mezclado aquí
+// (Fisher-Yates con crypto.getRandomValues). Solo si todo eso tuvo éxito marca la sesión como registrada
+// (con su nombre, lo único que ve el panel); si algo falla, borra lo insertado y responde el rechazo
+// genérico. No devuelve ni registra ningún dato personal ni el código.
 // Con { accion: "estado" } solo responde si el pase sigue valiendo (401 si no) y si ya se registró.
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
 import { RegistroDeSesiones, VerificadorDeSesion } from "../_shared/sesiones.ts";
 import { RegistroDeParticipantes, ValidadorDeParticipante } from "../_shared/participantes.ts";
+import { RegistroDePerfil } from "../_shared/perfil.ts";
+import { RegistroDeProgreso } from "../_shared/progreso.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -44,18 +50,32 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if ((cuerpo as { accion?: unknown } | null)?.accion === "estado") return canal.json(200, { registrada: sesion.registrada });
     if (sesion.registrada) return canal.json(200, { ok: true }); // ya registrada: no se duplica
 
-    // 2) Datos y versión del aviso. Solo se informa qué campos fallaron, nunca sus valores.
+    // 2) Aceptación explícita; si falta, rechazo genérico. Luego datos y versión del aviso: solo se
+    //    informa qué campos fallaron, nunca sus valores.
+    if ((cuerpo as { acepto?: unknown } | null)?.acepto !== true) return canal.rechazo();
     const resultado = ValidadorDeParticipante.validar(cuerpo);
     if ("campos" in resultado) return canal.json(400, { error: "datos_invalidos", campos: resultado.campos });
+    const { datos } = resultado;
 
-    // 3) Participante con código anónimo y, solo si eso tuvo éxito, la sesión como registrada.
+    // 3) Orden de la fase a ciegas (lanza si no hay videos publicados), antes de insertar nada.
     const ahora = Date.now();
+    const progreso = new RegistroDeProgreso(servicio);
+    const orden = await progreso.ordenAleatorio();
+
+    // 4) Participante, perfil y progreso con el mismo código; solo si todo tuvo éxito, la sesión como
+    //    registrada. Cada deshacer se apila antes de su inserción (borrar algo que no existe no daña).
     const participantes = new RegistroDeParticipantes(servicio);
-    const codigo = await participantes.crear(resultado.datos, sesion.numero, ahora);
+    const perfil = new RegistroDePerfil(servicio);
+    const codigo = await participantes.crear(datos, sesion.numero, ahora);
+    const deshacer: (() => Promise<void>)[] = [() => participantes.borrar(codigo)];
     try {
-      await new RegistroDeSesiones(servicio).marcarRegistrada(sesion.numero, resultado.datos.nombre, ahora);
+      deshacer.unshift(() => perfil.borrar(codigo));
+      await perfil.crear(codigo, { carrera: datos.carrera, edad: datos.edad, semestre: datos.semestre });
+      deshacer.unshift(() => progreso.borrar(codigo));
+      await progreso.crear(codigo, orden);
+      await new RegistroDeSesiones(servicio).marcarRegistrada(sesion.numero, datos.nombre, ahora);
     } catch (e) {
-      await participantes.borrar(codigo).catch((e2) => CanalHttp.registrarError(FUNCION, e2));
+      for (const paso of deshacer) await paso().catch((e2) => CanalHttp.registrarError(FUNCION, e2));
       throw e;
     }
     return canal.json(200, { ok: true });

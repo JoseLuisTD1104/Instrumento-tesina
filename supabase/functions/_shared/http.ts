@@ -32,6 +32,11 @@ export class CanalHttp {
     });
   }
 
+  /** Rechazo genérico: idéntico para cualquier dato, etapa o video que no corresponda. */
+  rechazo(): Response {
+    return this.json(400, { error: "solicitud_invalida" });
+  }
+
   vacio(estado: number): Response {
     return new Response(null, { status: estado, headers: this.#cabeceras() });
   }

@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261121-2">
+<link rel="stylesheet" href="feed.css?v=20261121-3">
 </head>
 <body>
 
@@ -16,9 +16,6 @@
 </header>
 
 <div class="nav" id="nav" aria-label="Navegar entre videos" hidden>
-  <button type="button" id="nav-anterior" aria-label="Video anterior" disabled>
-    <svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
-  </button>
   <button type="button" id="nav-siguiente" aria-label="Video siguiente" disabled>
     <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
   </button>
@@ -75,10 +72,30 @@
           <span class="campo-contador" id="reg-carrera-contador" aria-hidden="true">0/60</span>
         </div>
       </div>
+      <div class="campos-fila">
+        <div class="campo">
+          <label for="reg-edad">Edad</label>
+          <p class="campo-ayuda" id="reg-edad-ayuda">De 17 a 99 años</p>
+          <input id="reg-edad" name="edad" type="text" inputmode="numeric" maxlength="2" autocomplete="off"
+                 spellcheck="false" aria-describedby="reg-edad-ayuda reg-edad-error" required>
+          <div class="campo-pie">
+            <p class="campo-error" id="reg-edad-error" hidden></p>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="reg-semestre">Semestre</label>
+          <p class="campo-ayuda" id="reg-semestre-ayuda">Del 1 al 14</p>
+          <input id="reg-semestre" name="semestre" type="text" inputmode="numeric" maxlength="2" autocomplete="off"
+                 spellcheck="false" aria-describedby="reg-semestre-ayuda reg-semestre-error" required>
+          <div class="campo-pie">
+            <p class="campo-error" id="reg-semestre-error" hidden></p>
+          </div>
+        </div>
+      </div>
     </form>
     <div class="registro-pie">
       <label class="registro-casilla">
-        <input type="checkbox" id="reg-acepto">
+        <input type="checkbox" id="reg-acepto" required aria-required="true">
         <span>He leído el aviso de privacidad y acepto participar en este estudio</span>
       </label>
       <p class="registro-error" id="reg-error" role="alert" hidden></p>
@@ -87,9 +104,28 @@
   </div>
 </section>
 
+<!-- Instrucción antes de la fase a ciegas -->
+<section class="pantalla" id="instruccion" aria-labelledby="instruccion-texto" hidden>
+  <div class="pantalla-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <p class="pantalla-texto" id="instruccion-texto">Navega como lo harías normalmente en tus redes. Puedes pasar cualquier video que no te interese.</p>
+    <p class="pantalla-error" id="instruccion-error" role="alert" hidden></p>
+    <button type="button" class="pantalla-boton" id="instruccion-comenzar" aria-label="Comenzar">Comenzar</button>
+  </div>
+</section>
+
+<!-- Pantalla provisional al terminar la fase a ciegas (se reemplaza en la siguiente entrega) -->
+<section class="pantalla" id="fin-ciega" aria-labelledby="fin-ciega-texto" hidden>
+  <div class="pantalla-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <p class="pantalla-texto" id="fin-ciega-texto" tabindex="-1">Fin de la fase a ciegas.</p>
+  </div>
+</section>
+
 <main class="feed" id="feed" hidden>
   <p class="estado-feed" id="feed-estado" role="status">Cargando videos…</p>
 </main>
+<div class="feed-espera" id="feed-espera" role="status" aria-label="Cargando el siguiente video" hidden><span class="giro"></span></div>
 
 <template id="tpl-slide">
   <section class="slide">
@@ -220,6 +256,6 @@
 
 <script src="../admin/config.js?v=20261120-1"></script>
 <script src="aviso-privacidad.js?v=20261121-1"></script>
-<script src="feed.js?v=20261121-2"></script>
+<script src="feed.js?v=20261121-3"></script>
 </body>
 </html>

@@ -36,19 +36,15 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .logo { font-weight: 800; font-size: 24px; letter-spacing: -0.5px; }
 .logo span { color: var(--accent); }
 
-/* ---------- Feed: un video por pantalla ---------- */
+/* ---------- Feed a ciegas: solo el video actual en pantalla (el siguiente, precargado y oculto) ---------- */
 .feed {
   position: fixed; inset: var(--header-h) 0 0 0;
-  overflow-y: scroll;
-  scroll-snap-type: y mandatory;
-  scrollbar-width: none;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
-.feed::-webkit-scrollbar { display: none; }
 
 .slide {
   height: 100%;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   column-gap: var(--gap);
@@ -186,6 +182,18 @@ img { -webkit-user-drag: none; user-select: none; }
 
 button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
+/* Entrada del siguiente video (solo hacia adelante) */
+.slide.entrando { animation: entrar .28s ease-out; }
+@keyframes entrar { from { transform: translateY(18%); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .slide.entrando { animation: none; } }
+
+/* Espera mientras el servidor confirma la visualización */
+.feed-espera {
+  position: fixed; inset: var(--header-h) 0 0 0; z-index: 8;
+  display: grid; place-items: center; background: rgba(15,16,19,.45);
+}
+.estado-feed[role="alert"] { color: var(--text); }
+
 /* ================= MÓVIL (vertical, hasta 767px) ================= */
 @media (max-width: 767px) {
   :root { --header-h: 48px; --btn: 44px; }
@@ -286,6 +294,23 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .acceso-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
 .acceso-aviso { background: var(--surface-hover); color: var(--text); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
 
+/* ---------- Pantallas de un mensaje: instrucción y fin provisional de la fase a ciegas ---------- */
+.pantalla { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--bg); z-index: 20; }
+.pantalla-tarjeta {
+  width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 18px;
+  background: var(--surface); border-radius: var(--radius); padding: 32px 28px;
+}
+.pantalla-logo { text-align: center; font-size: 28px; }
+.pantalla-texto { font-size: 18px; line-height: 1.5; text-align: center; }
+.pantalla-texto:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; border-radius: 6px; }
+.pantalla-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
+.pantalla-boton {
+  padding: 13px 20px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 16px; font-weight: 600;
+}
+.pantalla-boton:disabled { opacity: .5; cursor: default; }
+.pantalla-boton:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+@media (max-width: 600px) { .pantalla-tarjeta { padding: 28px 20px; } .pantalla-texto { font-size: 17px; } }
+
 /* ---------- Registro: aviso de privacidad y datos del participante ---------- */
 .registro {
   position: fixed; inset: 0; z-index: 20; background: var(--bg);
@@ -324,6 +349,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 /* Campos */
 .registro-datos { display: flex; flex-direction: column; gap: 18px; }
 .campo { display: flex; flex-direction: column; gap: 6px; }
+.campos-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.campos-fila .campo { min-width: 0; }
 .campo label { font-size: 14px; font-weight: 600; }
 .campo-ayuda { font-size: 13px; color: var(--text-dim); }
 .campo input {
@@ -343,6 +370,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 .registro-casilla { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; cursor: pointer; }
 .registro-casilla input { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.registro-casilla input:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .registro-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 .registro-boton {
   align-self: flex-end; min-width: 200px; padding: 12px 20px; border-radius: 10px;

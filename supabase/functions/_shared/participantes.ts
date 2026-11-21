@@ -6,7 +6,9 @@ import { ClienteRest } from "./supabase.ts";
 /** Versión vigente del aviso de privacidad. El feed debe enviar exactamente este valor. */
 export const VERSION_AVISO = "aviso-2026-11";
 
-export type DatosParticipante = { matricula: string; nombre: string; carrera: string; version_terminos: string };
+export type DatosParticipante = {
+  matricula: string; nombre: string; carrera: string; version_terminos: string; edad: number; semestre: number;
+};
 
 /** Reglas de los datos que escribe el participante (las mismas que aplica la base). */
 export class ValidadorDeParticipante {
@@ -16,6 +18,10 @@ export class ValidadorDeParticipante {
   /** Limpia espacios y unifica la forma Unicode. */
   static #texto(valor: unknown): string {
     return typeof valor === "string" ? valor.normalize("NFC").replace(/\s+/g, " ").trim() : "";
+  }
+
+  static #entero(valor: unknown, minimo: number, maximo: number): valor is number {
+    return typeof valor === "number" && Number.isInteger(valor) && valor >= minimo && valor <= maximo;
   }
 
   static #textoValido(texto: string, maximo: number): boolean {
@@ -30,12 +36,16 @@ export class ValidadorDeParticipante {
     const nombre = ValidadorDeParticipante.#texto(c.nombre);
     const carrera = ValidadorDeParticipante.#texto(c.carrera);
     const version = c.version_terminos;
+    const { edad, semestre } = c;
     const campos: string[] = [];
     if (!/^[A-Z0-9]{6,15}$/.test(matricula)) campos.push("matricula");
     if (!ValidadorDeParticipante.#textoValido(nombre, 40)) campos.push("nombre");
     if (!ValidadorDeParticipante.#textoValido(carrera, 60)) campos.push("carrera");
+    if (!ValidadorDeParticipante.#entero(edad, 17, 99)) campos.push("edad");
+    if (!ValidadorDeParticipante.#entero(semestre, 1, 14)) campos.push("semestre");
     if (version !== VERSION_AVISO) campos.push("version_terminos");
-    return campos.length ? { campos } : { datos: { matricula, nombre, carrera, version_terminos: VERSION_AVISO } };
+    if (campos.length) return { campos };
+    return { datos: { matricula, nombre, carrera, version_terminos: VERSION_AVISO, edad: edad as number, semestre: semestre as number } };
   }
 }
 
@@ -88,6 +98,16 @@ export class RegistroDeParticipantes {
       }
     }
     throw new ErrorControlado("codigo_participante_agotado");
+  }
+
+  /** Código anónimo del participante de esa sesión (sesiones_activas.numero → participantes.sesion_numero), o null. */
+  async codigoDeSesion(sesionNumero: number): Promise<string | null> {
+    const filas = await this.#servicio.consultar("participantes", {
+      select: "codigo_participante", sesion_numero: `eq.${sesionNumero}`, limit: "2",
+    });
+    if (filas.length !== 1) return null;
+    const codigo = filas[0].codigo_participante;
+    return typeof codigo === "string" && GeneradorCodigoParticipante.PATRON.test(codigo) ? codigo : null;
   }
 
   /** Deshace un registro (si después no se pudo marcar la sesión), para no dejar datos huérfanos. */

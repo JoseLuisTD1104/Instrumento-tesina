@@ -65,16 +65,6 @@ export class RegistroDeInteracciones {
     this.#servicio = servicio;
   }
 
-  /** Código anónimo del participante de esa sesión (sesiones_activas.numero → participantes.sesion_numero), o null. */
-  async codigoDeSesion(sesionNumero: number): Promise<string | null> {
-    const filas = await this.#servicio.consultar("participantes", {
-      select: "codigo_participante", sesion_numero: `eq.${sesionNumero}`, limit: "2",
-    });
-    if (filas.length !== 1) return null;
-    const codigo = filas[0].codigo_participante;
-    return typeof codigo === "string" && GeneradorCodigoParticipante.PATRON.test(codigo) ? codigo : null;
-  }
-
   /** true si el video existe y está publicado. */
   async videoPublicado(videoId: string): Promise<boolean> {
     const filas = await this.#servicio.consultar("videos", { select: "id", id: `eq.${videoId}`, publicado: "eq.true", limit: "1" });
