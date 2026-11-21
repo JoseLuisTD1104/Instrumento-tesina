@@ -6,7 +6,9 @@
  * en Authorization a las demás funciones. Después del código, el participante lee el aviso de privacidad
  * y da sus datos ("registrar-participante"); sin ese registro el servidor no entrega el feed (403).
  * Los datos personales solo viajan en esa petición: no se guardan en sessionStorage, localStorage ni
- * cookies. Todo texto se pinta con nodos y textContent. No se guarda ninguna interacción del participante.
+ * cookies. Todo texto se pinta con nodos y textContent.
+ * Cada toque en el feed se manda a "registrar-interaccion" (sin datos personales: el servidor pone el código
+ * anónimo). Las métricas y el estado de los botones viven solo en memoria, nunca en el almacenamiento.
  */
 
 /** El servidor rechazó el pase (401): hay que volver a la pantalla de acceso. */
@@ -14,6 +16,14 @@ class ErrorSinPase extends Error {}
 
 /** El pase vale, pero la sesión aún no aceptó el aviso ni dio sus datos (403 falta_registro). */
 class ErrorFaltaRegistro extends Error {}
+
+/** Respuesta no exitosa del servidor, con su estado HTTP (sirve para decidir si conviene reintentar). */
+class ErrorDeServicio extends Error {
+  constructor(estado) {
+    super("servicio");
+    this.estado = estado;
+  }
+}
 
 /** El servidor rechazó los datos del registro (400 datos_invalidos): trae solo los nombres de campo. */
 class ErrorDatosInvalidos extends Error {
@@ -69,7 +79,8 @@ class ClienteFunciones {
 
   /**
    * Devuelve el JSON de la respuesta. 401 → ErrorSinPase; 403 falta_registro → ErrorFaltaRegistro;
-   * 400 datos_invalidos → ErrorDatosInvalidos; cualquier otro error → Error.
+   * 400 datos_invalidos → ErrorDatosInvalidos; cualquier otra respuesta → ErrorDeServicio(estado).
+   * Un fallo de red llega como el error de fetch.
    */
   async llamar(funcion, { metodo = "POST", cuerpo, pase, consulta } = {}) {
     const cabeceras = { apikey: this.#clave };
@@ -90,7 +101,7 @@ class ClienteFunciones {
       const datos = await r.json().catch(() => null);
       if (r.status === 403 && datos?.error === "falta_registro") throw new ErrorFaltaRegistro();
       if (r.status === 400 && datos?.error === "datos_invalidos") throw new ErrorDatosInvalidos(datos.campos);
-      throw new Error("servicio");
+      throw new ErrorDeServicio(r.status);
     }
     return r.status === 204 ? null : r.json();
   }
@@ -155,7 +166,7 @@ class VigilanteDeSesion {
 
 /** Datos del feed, siempre con el pase. */
 class FeedRepositorio {
-  static RUTA_IMAGEN = /^(perfiles|portadas)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
+  static RUTA_IMAGEN = /^(perfiles|portadas|comentarios)\/[0-9a-f-]{36}\.(png|jpg|webp)$/;
 
   #funciones;
   #pase;
@@ -175,6 +186,11 @@ class FeedRepositorio {
   urlImagen(ruta) {
     if (!ruta || !FeedRepositorio.RUTA_IMAGEN.test(ruta)) return null;
     return `${this.#funciones.origen}/storage/v1/object/public/imagenes/${ruta}`;
+  }
+
+  /** Una interacción del participante (204 sin cuerpo). El código anónimo lo pone el servidor. */
+  async registrarInteraccion(cuerpo) {
+    await this.#funciones.llamar("registrar-interaccion", { cuerpo, pase: this.#pase });
   }
 
   /** { url, venceEn } con la URL firmada que entrega "video-firmado". */
@@ -485,13 +501,13 @@ class PantallaDeRegistro {
 /**
  * Botón de enlace estilo anuncio de un video. Aparece según el tiempo del propio video (currentTime):
  * invisible y sin poder pulsarse antes del segundo 8, degradado de opacidad del 8 al 10, y desde el 10
- * completo y pulsable. Completo, se queda visible el resto del video y en el bucle. No registra clics.
+ * completo y pulsable. Completo, se queda visible el resto del video y en el bucle. Ya no abre ninguna
+ * URL (enlace_url se ignora): al pulsarlo solo avisa, y el video abre su ventana simulada.
  */
 class BarraDeEnlace {
   static INICIO_S = 8;
   static FIN_S = 10;
   static PATRON_COLOR = /^#[0-9A-F]{6}$/i;
-  static CARACTERES_PROHIBIDOS = /[\s"'<>]/;
 
   #elemento;
   #video;
@@ -500,23 +516,12 @@ class BarraDeEnlace {
   #ultimoTiempo = 0;
   #cuadro = null;
 
-  /** Devuelve la barra, o null si el video no tiene un enlace activo con texto y URL https:// válidos. */
-  static crear(datos, video, elemento) {
+  /** Devuelve la barra, o null si el video no tiene un enlace activo con texto. */
+  static crear(datos, video, elemento, alPulsar) {
     if (datos?.enlace_activo !== true) return null;
     const texto = String(datos.enlace_texto ?? "").trim();
-    const url = String(datos.enlace_url ?? "").trim();
-    if (!texto || !BarraDeEnlace.esUrlSegura(url)) return null;
-    return new BarraDeEnlace(texto, url, datos.enlace_color, video, elemento);
-  }
-
-  static esUrlSegura(url) {
-    if (!url.startsWith("https://") || url.length > 500 || BarraDeEnlace.CARACTERES_PROHIBIDOS.test(url)) return false;
-    try {
-      const u = new URL(url);
-      return u.protocol === "https:" && Boolean(u.hostname);
-    } catch {
-      return false;
-    }
+    if (!texto) return null;
+    return new BarraDeEnlace(texto, datos.enlace_color, video, elemento, alPulsar);
   }
 
   /** El color de cada video si es #RRGGBB; si no, el color de acento de corto. */
@@ -525,14 +530,15 @@ class BarraDeEnlace {
     return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#ff3b5c";
   }
 
-  constructor(texto, url, color, video, elemento) {
+  texto;
+
+  constructor(texto, color, video, elemento, alPulsar) {
+    this.texto = texto;
     this.#elemento = elemento;
     this.#video = video;
-    elemento.href = url;
-    elemento.target = "_blank";
-    elemento.rel = "noopener noreferrer";
-    elemento.referrerPolicy = "no-referrer";
     elemento.querySelector("[data-enlace-texto]").textContent = texto; // nunca innerHTML
+    elemento.setAttribute("aria-label", texto);
+    elemento.addEventListener("click", () => { if (this.#completa) alPulsar(); });
     elemento.style.backgroundColor = BarraDeEnlace.colorSeguro(color);
     this.#bloquear();
     elemento.hidden = false;
@@ -592,6 +598,362 @@ class BarraDeEnlace {
   }
 }
 
+/** Números al azar del navegador con crypto.getRandomValues, sin sesgo (se descartan los valores sobrantes). */
+class Azar {
+  static entero(minimo, maximo) {
+    const rango = maximo - minimo + 1;
+    const limite = Math.floor(0x1_0000_0000 / rango) * rango;
+    const valor = new Uint32Array(1);
+    do crypto.getRandomValues(valor); while (valor[0] >= limite);
+    return minimo + (valor[0] % rango);
+  }
+}
+
+/** Contadores abreviados: 999, 1.2K, 3.4M (se trunca, nunca se redondea hacia arriba). */
+class FormatoContador {
+  static abreviar(numero) {
+    const n = Math.max(0, Math.floor(Number(numero) || 0));
+    if (n < 1000) return String(n);
+    const [divisor, sufijo] = n < 1e6 ? [1e3, "K"] : n < 1e9 ? [1e6, "M"] : [1e9, "B"];
+    const valor = Math.floor((n * 10) / divisor) / 10;
+    return `${Number.isInteger(valor) ? valor : valor.toFixed(1)}${sufijo}`;
+  }
+}
+
+/**
+ * Manda las interacciones a "registrar-interaccion" sin bloquear la interfaz. Si una falla por red o por
+ * el servidor, la reintenta hasta 3 veces con espera creciente y luego la descarta en silencio. Los
+ * rechazos definitivos (pase, registro o datos) no se reintentan. Nada se guarda en el navegador.
+ */
+class EnviadorDeInteracciones {
+  static ESPERAS_MS = [1000, 2000, 4000];
+
+  #repo;
+  #activo = true;
+  #esperas = new Set();
+
+  constructor(repo) {
+    this.#repo = repo;
+  }
+
+  registrar(videoId, tipo, tiempoVideoMs, extra = {}) {
+    if (!this.#activo) return;
+    this.#intentar({ video_id: videoId, tipo, tiempo_video_ms: tiempoVideoMs, ...extra }, 0);
+  }
+
+  /** Al cerrarse la sesión: no se manda ni se reintenta nada más. */
+  detener() {
+    this.#activo = false;
+    for (const t of this.#esperas) window.clearTimeout(t);
+    this.#esperas.clear();
+  }
+
+  #intentar(cuerpo, reintento) {
+    this.#repo.registrarInteraccion(cuerpo).catch((e) => {
+      if (!this.#activo || !EnviadorDeInteracciones.#reintentable(e) || reintento >= EnviadorDeInteracciones.ESPERAS_MS.length) return;
+      const t = window.setTimeout(() => {
+        this.#esperas.delete(t);
+        this.#intentar(cuerpo, reintento + 1);
+      }, EnviadorDeInteracciones.ESPERAS_MS[reintento]);
+      this.#esperas.add(t);
+    });
+  }
+
+  static #reintentable(error) {
+    if (error instanceof ErrorSinPase || error instanceof ErrorFaltaRegistro) return false;
+    if (error instanceof ErrorDeServicio) return error.estado >= 500 || error.estado === 429;
+    return true; // red
+  }
+}
+
+/**
+ * Botón de dos estados (me gusta, guardar, seguir): aria-pressed, clase "activo" para el ícono relleno,
+ * una animación breve y, si tiene contador, suma 1 solo en pantalla. El estado vive solo en memoria.
+ */
+class BotonInterruptor {
+  #boton;
+  #cuenta;
+  #base;
+  #textos;
+  #etiquetas;
+  #activo = false;
+
+  constructor(boton, { base = null, textos = null, etiquetas = null, alCambiar }) {
+    this.#boton = boton;
+    this.#cuenta = base === null ? null : boton.querySelector("[data-cuenta]");
+    this.#base = Math.max(0, Math.floor(Number(base) || 0));
+    this.#textos = textos;
+    this.#etiquetas = etiquetas;
+    boton.addEventListener("click", () => {
+      this.#activo = !this.#activo;
+      this.#pintar();
+      this.#animar();
+      alCambiar(this.#activo);
+    });
+    boton.addEventListener("animationend", () => boton.classList.remove("latido"));
+    this.#pintar();
+  }
+
+  #pintar() {
+    this.#boton.setAttribute("aria-pressed", String(this.#activo));
+    this.#boton.classList.toggle("activo", this.#activo);
+    if (this.#cuenta) this.#cuenta.textContent = FormatoContador.abreviar(this.#base + (this.#activo ? 1 : 0));
+    if (this.#textos) this.#boton.textContent = this.#textos[this.#activo ? 1 : 0];
+    if (this.#etiquetas) this.#boton.setAttribute("aria-label", this.#etiquetas[this.#activo ? 1 : 0]);
+  }
+
+  #animar() {
+    this.#boton.classList.remove("latido");
+    void this.#boton.offsetWidth; // reinicia la animación si se pulsa seguido
+    this.#boton.classList.add("latido");
+  }
+}
+
+/** Capas abiertas (paneles, menús, ventanas): Esc cierra solo la de arriba. */
+class PilaDeCapas {
+  static #capas = [];
+
+  static {
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !PilaDeCapas.#capas.length) return;
+      e.preventDefault();
+      PilaDeCapas.#capas.at(-1).cerrarPorTecla();
+    });
+  }
+
+  static get vacia() { return PilaDeCapas.#capas.length === 0; }
+
+  static apilar(capa) {
+    PilaDeCapas.quitar(capa);
+    PilaDeCapas.#capas.push(capa);
+  }
+
+  static quitar(capa) {
+    PilaDeCapas.#capas = PilaDeCapas.#capas.filter((c) => c !== capa);
+  }
+}
+
+/**
+ * Capa que se abre desde un botón dentro de la tarjeta del video y se cierra con su X, con Esc o con un
+ * clic fuera de ella. Al cerrarse devuelve el foco al botón si lo tenía dentro.
+ */
+class CapaFlotante {
+  #contenedor;
+  #boton;
+  #elemento = null;
+  #escuchas = null;
+
+  constructor(contenedor, boton) {
+    this.#contenedor = contenedor;
+    this.#boton = boton;
+  }
+
+  get abierta() { return this.#elemento !== null; }
+
+  /** Lo que se muestra: un elemento nuevo con [data-cerrar] opcional y la parte "de dentro" en [data-hoja]. */
+  construir() { throw new Error("construir"); }
+
+  abrir() {
+    if (this.abierta) return false;
+    this.#elemento = this.construir();
+    this.#escuchas = new AbortController();
+    const opciones = { signal: this.#escuchas.signal };
+    this.#elemento.querySelector("[data-cerrar]")?.addEventListener("click", () => this.cerrar(), opciones);
+    // Clic fuera (en la tarjeta o en la página): cierra. El clic no sigue hacia el video ni hacia otros botones de la capa.
+    document.addEventListener("click", (e) => {
+      const dentro = this.#elemento.querySelector("[data-hoja]") ?? this.#elemento;
+      if (dentro.contains(e.target) || this.#boton.contains(e.target)) return;
+      if (this.#elemento.contains(e.target)) e.stopPropagation(); // el fondo de la capa no pausa el video
+      this.cerrar();
+    }, { ...opciones, capture: true });
+    this.#contenedor.append(this.#elemento);
+    this.#boton.setAttribute("aria-expanded", "true");
+    PilaDeCapas.apilar(this);
+    (this.#elemento.querySelector("[data-cerrar], [role=menuitem]"))?.focus({ preventScroll: true });
+    return true;
+  }
+
+  cerrar() {
+    if (!this.abierta) return;
+    const teniaFoco = this.#elemento.contains(document.activeElement);
+    this.#escuchas.abort();
+    this.#elemento.remove();
+    this.#elemento = null;
+    this.#boton.setAttribute("aria-expanded", "false");
+    PilaDeCapas.quitar(this);
+    if (teniaFoco) this.#boton.focus({ preventScroll: true });
+  }
+
+  cerrarPorTecla() { this.cerrar(); }
+}
+
+/** Avatar de un comentario: su foto o, si no tiene (o no carga), un círculo con las iniciales en su color. */
+class AvatarDeComentario {
+  static PATRON_COLOR = /^#[0-9a-f]{6}$/i;
+
+  /** usuario.uno → UU; ana → AN. */
+  static iniciales(usuario) {
+    const partes = String(usuario ?? "").replace(/^@+/, "").split(/[._]+/).filter(Boolean);
+    if (!partes.length) return "?";
+    const texto = partes.length >= 2 ? [...partes[0]][0] + [...partes[1]][0] : [...partes[0]].slice(0, 2).join("");
+    return texto.toUpperCase();
+  }
+
+  static pintar(caja, comentario, urlFoto) {
+    const ponerIniciales = () => {
+      const span = document.createElement("span");
+      span.textContent = AvatarDeComentario.iniciales(comentario.usuario);
+      caja.style.backgroundColor = AvatarDeComentario.PATRON_COLOR.test(comentario.color ?? "") ? comentario.color : "";
+      caja.replaceChildren(span);
+    };
+    if (!urlFoto) { ponerIniciales(); return; }
+    const img = document.createElement("img");
+    img.alt = "";
+    img.draggable = false;
+    img.src = urlFoto;
+    img.addEventListener("error", ponerIniciales, { once: true });
+    caja.replaceChildren(img);
+  }
+}
+
+/** Panel de comentarios de un video, solo lectura (sin campo para escribir). */
+class PanelDeComentarios extends CapaFlotante {
+  #comentarios;
+  #total;
+  #urlImagen;
+
+  constructor(contenedor, boton, comentarios, total, urlImagen) {
+    super(contenedor, boton);
+    this.#comentarios = Array.isArray(comentarios) ? comentarios : [];
+    this.#total = total;
+    this.#urlImagen = urlImagen;
+  }
+
+  construir() {
+    const capa = document.getElementById("tpl-comentarios").content.firstElementChild.cloneNode(true);
+    capa.querySelector("[data-total]").textContent = FormatoContador.abreviar(this.#total);
+    const plantilla = document.getElementById("tpl-comentario").content.firstElementChild;
+    const items = this.#comentarios.map((c) => {
+      const li = plantilla.cloneNode(true);
+      AvatarDeComentario.pintar(li.querySelector("[data-avatar-com]"), c, this.#urlImagen(c.foto_perfil_ruta));
+      li.querySelector("[data-com-usuario]").textContent = c.usuario ? `@${String(c.usuario).replace(/^@+/, "")}` : "";
+      li.querySelector("[data-com-texto]").textContent = String(c.texto ?? "");
+      return li;
+    });
+    capa.querySelector("[data-lista]").replaceChildren(...items);
+    capa.querySelector("[data-lista]").hidden = !items.length;
+    capa.querySelector("[data-vacio]").hidden = items.length > 0;
+    return capa;
+  }
+}
+
+/** Menú de "…": sus tres opciones solo cierran el menú. */
+class MenuMasOpciones extends CapaFlotante {
+  construir() {
+    const menu = document.getElementById("tpl-menu-mas").content.firstElementChild.cloneNode(true);
+    for (const opcion of menu.querySelectorAll("[role=menuitem]")) opcion.addEventListener("click", () => this.cerrar());
+    menu.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      e.stopPropagation(); // no cambia de video
+      const opciones = [...menu.querySelectorAll("[role=menuitem]")];
+      const i = opciones.indexOf(document.activeElement);
+      opciones[(i + (e.key === "ArrowDown" ? 1 : opciones.length - 1)) % opciones.length].focus();
+    });
+    return menu;
+  }
+}
+
+/**
+ * Ventana simulada de compartir o del botón de enlace, dentro de la tarjeta del video y sin pausarlo.
+ * Muestra un indicador de carga de 0.5 a 1 s y luego contenido propio, genérico e inerte. Se cierra sola
+ * a un tiempo al azar (crypto) sin ningún mensaje, o antes con la X o con Esc. Solo una abierta a la vez.
+ */
+class VentanaSimulada {
+  static CARGA_MS = [500, 1000];
+  // Entre 10 y 15 s; el tope deja margen para que la duración medida tampoco pase de 15 000 ms.
+  static CIERRE_MS = [10_000, 14_750];
+  static MAX_DURACION_MS = 60_000;
+  static #abierta = null;
+
+  #plantilla;
+  #contenedor;
+  #preparar;
+  #alCerrar;
+  #capa = null;
+  #inicio = 0;
+  #temporizadores = [];
+  #focoPrevio = null;
+
+  constructor(plantilla, contenedor, alCerrar, preparar = () => {}) {
+    this.#plantilla = plantilla;
+    this.#contenedor = contenedor;
+    this.#alCerrar = alCerrar;
+    this.#preparar = preparar;
+  }
+
+  static compartir(contenedor, alCerrar) {
+    return new VentanaSimulada("tpl-compartir", contenedor, alCerrar);
+  }
+
+  static enlace(contenedor, texto, alCerrar) {
+    return new VentanaSimulada("tpl-ventana-enlace", contenedor, alCerrar, (capa) => {
+      capa.querySelector("[data-ventana-titulo]").textContent = texto; // el texto del botón, nunca la URL
+      capa.querySelector("[data-hoja]").setAttribute("aria-label", texto);
+    });
+  }
+
+  /** true si se abrió; false si ya hay otra ventana simulada abierta. */
+  abrir() {
+    if (VentanaSimulada.#abierta) return false;
+    VentanaSimulada.#abierta = this;
+    this.#inicio = performance.now();
+    this.#focoPrevio = document.activeElement;
+    this.#capa = document.getElementById(this.#plantilla).content.firstElementChild.cloneNode(true);
+    this.#preparar(this.#capa);
+    this.#capa.querySelector("[data-cerrar]").addEventListener("click", () => this.#cerrar("manual"));
+    this.#capa.addEventListener("click", (e) => e.stopPropagation()); // nada debajo recibe el clic
+    this.#contenedor.append(this.#capa);
+    PilaDeCapas.apilar(this);
+    this.#capa.querySelector("[data-cerrar]").focus({ preventScroll: true });
+    this.#temporizadores.push(
+      window.setTimeout(() => this.#mostrarContenido(), Azar.entero(...VentanaSimulada.CARGA_MS)),
+      window.setTimeout(() => this.#cerrar("automatico"), Azar.entero(...VentanaSimulada.CIERRE_MS)),
+    );
+    return true;
+  }
+
+  cerrarPorTecla() { this.#cerrar("manual"); }
+
+  /** Al cerrarse la sesión: se quita sin registrar nada. */
+  descartar() { this.#quitar(); }
+
+  #mostrarContenido() {
+    if (!this.#capa) return;
+    this.#capa.querySelector("[data-carga]").hidden = true;
+    this.#capa.querySelector("[data-contenido]").hidden = false;
+  }
+
+  #cerrar(detalle) {
+    if (!this.#capa) return;
+    const duracion = Math.min(VentanaSimulada.MAX_DURACION_MS, Math.max(0, Math.round(performance.now() - this.#inicio)));
+    const teniaFoco = this.#capa.contains(document.activeElement);
+    this.#quitar();
+    if (teniaFoco && this.#focoPrevio?.isConnected) this.#focoPrevio.focus({ preventScroll: true });
+    this.#alCerrar(detalle, duracion);
+  }
+
+  #quitar() {
+    if (!this.#capa) return;
+    this.#temporizadores.forEach((t) => window.clearTimeout(t));
+    this.#temporizadores = [];
+    this.#capa.remove();
+    this.#capa = null;
+    PilaDeCapas.quitar(this);
+    if (VentanaSimulada.#abierta === this) VentanaSimulada.#abierta = null;
+  }
+}
+
 /** Un video del feed: pide su URL firmada, la renueva al caducar y bloquea menús y descargas. */
 class VideoDelFeed {
   static MARGEN_MS = 20_000; // se pide una URL nueva si a la actual le quedan menos de 20 s
@@ -599,7 +961,13 @@ class VideoDelFeed {
   #repo;
   #datos;
   #feed;
+  #metricas;
   #video;
+  #player;
+  #barra = null;
+  #comentarios;
+  #menu;
+  #ventana = null;
   #aviso;
   #progreso;
   #firma = null;
@@ -610,18 +978,21 @@ class VideoDelFeed {
   #destruido = false;
   raiz;
 
-  constructor(repo, datos, feed) {
+  constructor(repo, datos, feed, metricas) {
     this.#repo = repo;
     this.#datos = datos;
     this.#feed = feed;
+    this.#metricas = metricas;
     this.raiz = document.getElementById("tpl-slide").content.firstElementChild.cloneNode(true);
     this.#video = this.raiz.querySelector("video");
+    this.#player = this.raiz.querySelector(".player");
     this.#aviso = this.raiz.querySelector("[data-aviso]");
     this.#progreso = this.raiz.querySelector("[data-progreso]");
     this.#pintarDatos();
-    BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"));
+    this.#barra = BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"), () => this.#abrirEnlace());
     this.#protegerVideo();
     this.#conectarControles();
+    this.#conectarInteracciones();
   }
 
   get id() { return this.#datos.id; }
@@ -636,6 +1007,8 @@ class VideoDelFeed {
   desactivar() {
     this.#activo = false;
     this.#video.pause();
+    this.#comentarios.cerrar();
+    this.#menu.cerrar();
   }
 
   /** Precarga la URL del siguiente video para que empiece sin espera. */
@@ -647,6 +1020,9 @@ class VideoDelFeed {
   destruir() {
     this.#destruido = true;
     this.#activo = false;
+    this.#comentarios.cerrar();
+    this.#menu.cerrar();
+    this.#ventana?.descartar();
     this.#video.pause();
     this.#video.removeAttribute("src");
     this.#video.load();
@@ -728,14 +1104,85 @@ class VideoDelFeed {
 
   #conectarControles() {
     const alternar = () => {
-      if (this.#video.paused) { this.#pausadoPorUsuario = false; this.#reproducir(); }
-      else { this.#pausadoPorUsuario = true; this.#video.pause(); }
+      if (this.#video.paused) {
+        this.#pausadoPorUsuario = false;
+        this.#reproducir();
+        this.#registrar("reanudar");
+      } else {
+        this.#pausadoPorUsuario = true;
+        this.#video.pause();
+        this.#registrar("pausa");
+      }
     };
     this.raiz.querySelector("[data-escudo]").addEventListener("click", alternar);
     this.raiz.querySelector("[data-pausa]").addEventListener("click", alternar);
-    this.raiz.querySelector("[data-sonido]").addEventListener("click", () => this.#feed.alternarSonido());
+    this.raiz.querySelector("[data-sonido]").addEventListener("click", () => {
+      this.#feed.alternarSonido();
+      this.#registrar(this.#video.muted ? "silenciar" : "activar_sonido");
+    });
     this.#video.addEventListener("play", () => this.#iconoPausa(true));
     this.#video.addEventListener("pause", () => this.#iconoPausa(false));
+  }
+
+  // ------------------------------------------------------------ interacciones
+  #conectarInteracciones() {
+    const d = this.#datos;
+    const boton = (atributo) => this.raiz.querySelector(`[${atributo}]`);
+    new BotonInterruptor(boton("data-me-gusta"), {
+      base: d.me_gusta_num, alCambiar: (activo) => this.#registrar(activo ? "me_gusta" : "quitar_me_gusta"),
+    });
+    new BotonInterruptor(boton("data-guardar"), {
+      base: d.guardados_num, alCambiar: (activo) => this.#registrar(activo ? "guardar" : "quitar_guardar"),
+    });
+    const usuario = d.usuario ? `@${d.usuario}` : "esta cuenta";
+    new BotonInterruptor(boton("data-seguir"), {
+      textos: ["Seguir", "Siguiendo"],
+      etiquetas: [`Seguir a ${usuario}`, `Dejar de seguir a ${usuario}`],
+      alCambiar: (activo) => this.#registrar(activo ? "seguir" : "dejar_seguir"),
+    });
+
+    const botonComentarios = boton("data-comentarios");
+    botonComentarios.querySelector("[data-cuenta]").textContent = FormatoContador.abreviar(d.comentarios_num);
+    this.#comentarios = new PanelDeComentarios(this.#player, botonComentarios, d.comentarios, d.comentarios_num, (ruta) => this.#repo.urlImagen(ruta));
+    botonComentarios.addEventListener("click", () => {
+      if (this.#comentarios.abierta) { this.#comentarios.cerrar(); return; }
+      if (this.#comentarios.abrir()) this.#registrar("comentarios");
+    });
+
+    const botonMas = boton("data-mas");
+    this.#menu = new MenuMasOpciones(this.#player, botonMas);
+    botonMas.addEventListener("click", () => {
+      if (this.#menu.abierta) { this.#menu.cerrar(); return; }
+      if (this.#menu.abrir()) this.#registrar("mas_opciones");
+    });
+
+    boton("data-compartir").addEventListener("click", () => {
+      this.#abrirVentana(VentanaSimulada.compartir(this.#player, (detalle, duracion) =>
+        this.#registrar("compartir_cerrado", { detalle, duracion_ms: duracion })), "compartir");
+    });
+  }
+
+  #abrirEnlace() {
+    if (!this.#barra) return;
+    this.#abrirVentana(VentanaSimulada.enlace(this.#player, this.#barra.texto, (detalle, duracion) =>
+      this.#registrar("ver_enlace_cerrado", { detalle, duracion_ms: duracion })), "ver_enlace");
+  }
+
+  /** Abre la ventana simulada (si no hay otra abierta) y registra la apertura. */
+  #abrirVentana(ventana, tipo) {
+    if (this.#destruido || !ventana.abrir()) return;
+    this.#ventana = ventana;
+    this.#registrar(tipo);
+  }
+
+  /** Tiempo actual del video en milisegundos enteros, dentro del rango que acepta el servidor. */
+  #tiempoMs() {
+    return Math.min(3_600_000, Math.max(0, Math.round((this.#video.currentTime || 0) * 1000)));
+  }
+
+  #registrar(tipo, extra) {
+    if (this.#destruido) return;
+    this.#metricas.registrar(this.#datos.id, tipo, this.#tiempoMs(), extra);
   }
 
   #iconoPausa(reproduciendo) {
@@ -810,11 +1257,13 @@ class FeedPagina {
   #conSonido = false;
   #observador = null;
   #escuchas = new AbortController(); // permite quitar todos los escuchadores al vaciar
+  #metricas;
 
   #alFaltarRegistro;
 
   constructor(repo, alPerderPase, alFaltarRegistro) {
     this.#repo = repo;
+    this.#metricas = new EnviadorDeInteracciones(repo);
     this.#alPerderPase = alPerderPase;
     this.#alFaltarRegistro = alFaltarRegistro;
   }
@@ -827,6 +1276,7 @@ class FeedPagina {
 
   /** Pausa y quita todos los videos (src y elementos) y los escuchadores. La página queda vacía. */
   vaciar() {
+    this.#metricas.detener();
     this.#escuchas.abort();
     this.#observador?.disconnect();
     this.#videos.forEach((v) => v.destruir());
@@ -856,7 +1306,7 @@ class FeedPagina {
       this.#mostrarEstado("Todavía no hay videos publicados.");
       return;
     }
-    this.#videos = filas.map((d) => new VideoDelFeed(this.#repo, d, this));
+    this.#videos = filas.map((d) => new VideoDelFeed(this.#repo, d, this, this.#metricas));
     this.#estado.remove();
     this.#contenedor.replaceChildren(...this.#videos.map((v) => v.raiz));
     this.#videos.forEach((v) => v.aplicarSonido(this.#conSonido));
@@ -908,6 +1358,7 @@ class FeedPagina {
     this.#anterior.addEventListener("click", () => this.#irA(this.#indice - 1), opciones);
     this.#siguiente.addEventListener("click", () => this.#irA(this.#indice + 1), opciones);
     document.addEventListener("keydown", (e) => {
+      if (!PilaDeCapas.vacia) return; // con un panel, menú o ventana abiertos, las flechas no cambian de video
       if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); this.#irA(this.#indice + 1); }
       if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); this.#irA(this.#indice - 1); }
     }, opciones);

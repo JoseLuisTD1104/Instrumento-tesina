@@ -9,6 +9,8 @@
   --gap: 16px;
   --radius: 14px;
   --btn: 48px;
+  --guardado: #ffc83d;
+  --gris-pagina: #d8d9de;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -20,7 +22,7 @@ body {
   overflow: hidden;
 }
 
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- Barra superior: solo logo, centrado sobre el video ---------- */
@@ -113,13 +115,15 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   opacity: 0; pointer-events: none;
 }
 .barra-enlace.activa { pointer-events: auto; cursor: pointer; }
+button.barra-enlace { font-family: inherit; text-align: left; }
 .barra-enlace span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barra-enlace svg { width: 1.15em; height: 1.15em; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .barra-enlace:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .author { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; border: 2px solid #fff; flex-shrink: 0; }
 .username { font-weight: 700; font-size: 15px; }
-.follow { border: 1px solid rgba(255,255,255,.7); padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+.follow { border: 1px solid rgba(255,255,255,.7); padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; min-width: 5.6em; transition: background .15s, border-color .15s; }
+.follow.activo { background: rgba(255,255,255,.18); border-color: transparent; color: var(--text-dim); }
 .caption { font-size: 14px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .caption b { font-weight: 600; }
 .sound { margin-top: 8px; font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
@@ -144,6 +148,15 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   transition: background .15s;
 }
 .action:hover .circle { background: var(--surface-hover); }
+.action .cuenta { font-size: 12px; font-weight: 600; color: var(--text); min-height: 1em; font-variant-numeric: tabular-nums; }
+.action .cuenta:empty { display: none; }
+/* Me gusta y Guardar activos: ícono relleno y una animación breve */
+.action[data-me-gusta].activo .circle { color: var(--accent); }
+.action[data-guardar].activo .circle { color: var(--guardado); }
+.action.activo .circle svg { fill: currentColor; }
+.action.latido .circle svg, .follow.latido { animation: latido .32s ease-out; }
+@keyframes latido { 0% { transform: scale(1); } 40% { transform: scale(1.28); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .action.latido .circle svg, .follow.latido { animation: none; } }
 .disc { width: var(--btn); height: var(--btn); border-radius: 10px; background: linear-gradient(135deg, #444, #888); border: 2px solid var(--surface-hover); overflow: hidden; }
 .disc img, .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .avatar { overflow: hidden; }
@@ -344,4 +357,90 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .registro-panel { padding: 16px; }
   .registro-pie { padding: 12px 16px max(16px, env(safe-area-inset-bottom)); }
   .registro-boton { align-self: stretch; }
+}
+
+
+/* ---------- Capas dentro de la tarjeta: comentarios, compartir, ventana del enlace, menú "…" ---------- */
+.capa { position: absolute; inset: 0; z-index: 6; }
+.capa-fondo { position: absolute; inset: 0; background: rgba(0,0,0,.35); }
+.hoja {
+  position: absolute; display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text); box-shadow: 0 -4px 24px rgba(0,0,0,.4);
+}
+.hoja-cabecera {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative;
+  padding: 14px 48px; border-bottom: 1px solid #2c2d33;
+}
+.hoja-titulo { font-size: 15px; font-weight: 700; }
+.hoja-total { color: var(--text-dim); font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.hoja-cerrar {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+}
+.hoja-cerrar:hover { background: var(--surface-hover); }
+.hoja-cerrar svg { width: 20px; height: 20px; }
+
+/* Comentarios: panel lateral dentro de la tarjeta (PC y tablet), hoja inferior en móvil */
+.hoja-comentarios { top: 0; right: 0; bottom: 0; width: min(88%, 380px); border-radius: var(--radius) 0 0 var(--radius); }
+.lista-comentarios { list-style: none; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 16px 16px; }
+.lista-comentarios:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.comentario { display: flex; gap: 10px; padding: 10px 0; }
+.avatar-com {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  display: grid; place-items: center; background: var(--surface-hover);
+  color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .02em;
+}
+.avatar-com img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.comentario-cuerpo { min-width: 0; }
+.comentario-usuario { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 2px; overflow-wrap: anywhere; }
+.comentario-texto { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-line; }
+.comentarios-vacio { flex: 1; display: grid; place-items: center; color: var(--text-dim); font-size: 14px; padding: 24px; }
+
+/* Compartir: hoja inferior */
+.hoja-compartir { left: 0; right: 0; bottom: 0; min-height: 210px; border-radius: 16px 16px 0 0; }
+.opciones-compartir {
+  list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 8px;
+  padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+}
+.opciones-compartir li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); text-align: center; }
+.opcion-circulo { width: 52px; height: 52px; border-radius: 50%; background: #3a3b42; color: #e6e6ea; display: grid; place-items: center; }
+.opcion-circulo svg { width: 22px; height: 22px; }
+
+/* Ventana del botón de enlace: una página clara que cubre casi toda la tarjeta */
+.ventana-enlace {
+  position: absolute; inset: 3%; display: flex; flex-direction: column; overflow: hidden;
+  background: #f6f6f8; color: #1d1e22; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.45);
+}
+.ventana-barra { flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 8px 12px 8px 6px; background: #fff; border-bottom: 1px solid #e3e4e8; }
+.ventana-barra .hoja-cerrar { position: static; transform: none; color: #1d1e22; flex-shrink: 0; }
+.ventana-barra .hoja-cerrar:hover { background: #ececf0; }
+.ventana-barra .hoja-cerrar:focus-visible { outline-color: #1d1e22; }
+.ventana-titulo { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ventana-pagina { flex: 1; min-height: 0; overflow: hidden; padding: 18px 18px 24px; display: flex; flex-direction: column; gap: 12px; }
+.pagina-imagen { flex-shrink: 0; aspect-ratio: 16 / 10; border-radius: 10px; background: #cfd0d6; margin-bottom: 6px; }
+.pagina-titulo { flex-shrink: 0; height: 20px; width: 72%; border-radius: 6px; background: #9fa1a9; margin-bottom: 4px; }
+.pagina-linea { flex-shrink: 0; height: 10px; border-radius: 5px; background: var(--gris-pagina); }
+.pagina-linea.corta { width: 62%; }
+
+/* Indicador de carga breve */
+.carga { flex: 1; min-height: 120px; display: grid; place-items: center; }
+.giro { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(128,128,128,.3); border-top-color: var(--accent); animation: giro .8s linear infinite; }
+@keyframes giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .giro { animation-duration: 2s; } }
+
+/* Menú de "…" */
+.menu-mas {
+  position: absolute; right: 12px; bottom: 96px; z-index: 7; min-width: 190px;
+  display: flex; flex-direction: column; padding: 6px;
+  background: var(--surface); border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.5);
+}
+.menu-mas button { text-align: left; padding: 11px 12px; border-radius: 8px; font-size: 14px; }
+.menu-mas button:hover, .menu-mas button:focus-visible { background: var(--surface-hover); }
+
+@media (max-width: 767px) {
+  .action .cuenta { text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  .hoja-comentarios { top: auto; left: 0; width: 100%; height: 68%; border-radius: 16px 16px 0 0; }
+  .lista-comentarios { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .ventana-enlace { inset: 8px; }
+  .menu-mas { right: 64px; bottom: calc(110px + env(safe-area-inset-bottom)); }
 }
