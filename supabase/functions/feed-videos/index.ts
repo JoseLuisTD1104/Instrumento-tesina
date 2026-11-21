@@ -4,8 +4,8 @@
 // (orden_ciego[posicion] y [posicion+1]), nunca el orden completo ni ids de otros videos; si el actual no
 // está disponible, la lista va vacía. En cualquier otra etapa la lista va vacía. Con ?accion=solo_verificar
 // solo valida el pase y responde 204 sin datos. No revisa abierto_hasta: cerrar el acceso solo impide
-// entradas nuevas. Cada video lleva hasta 50 comentarios (usuario, texto, foto_perfil_ruta, color) por
-// creado_en, sin ids.
+// entradas nuevas. Cada video lleva hasta 50 comentarios (usuario, texto, foto_perfil_ruta, color, creado_en)
+// por creado_en, sin ids.
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { PaseParticipante } from "../_shared/pase.ts";
@@ -22,10 +22,10 @@ const COLUMNAS = [
   "publicado_en", "me_gusta_num", "comentarios_num", "guardados_num",
   "enlace_activo", "enlace_texto", "enlace_url", "enlace_color",
 ].join(",");
-const COLUMNAS_COMENTARIO = ["usuario", "texto", "foto_perfil_ruta", "color"] as const;
+const COLUMNAS_COMENTARIO = ["usuario", "texto", "foto_perfil_ruta", "color", "creado_en"] as const;
 const MAX_COMENTARIOS = 50;
 
-/** Comentarios de un video (solo lectura), sin id, video_id ni creado_en. */
+/** Comentarios de un video (solo lectura), sin id ni video_id. */
 async function comentariosDe(servicio: ClienteRest, videoId: string): Promise<Record<string, unknown>[]> {
   const filas = await servicio.consultar("comentarios", {
     select: COLUMNAS_COMENTARIO.join(","),

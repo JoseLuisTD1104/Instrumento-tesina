@@ -950,8 +950,43 @@ class AvatarDeComentario {
   }
 }
 
-/** Panel de comentarios de un video, solo lectura (sin campo para escribir). */
+/** Fecha corta de un comentario (día-mes, p. ej., 15-10) en la zona horaria de la Ciudad de México. */
+class FechaDeComentario {
+  static #formato = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Mexico_City", day: "2-digit", month: "2-digit" });
+
+  /** Texto visible y valor ISO para <time>; null si la fecha no es válida. */
+  static de(valor) {
+    const fecha = new Date(valor ?? "");
+    if (Number.isNaN(fecha.getTime())) return null;
+    const partes = Object.fromEntries(FechaDeComentario.#formato.formatToParts(fecha).map((p) => [p.type, p.value]));
+    return { texto: `${partes.day}-${partes.month}`, iso: fecha.toISOString() };
+  }
+}
+
+/**
+ * "Me gusta" simulado de un comentario: sale de un hash FNV-1a (32 bits) de usuario + texto, así que es el
+ * mismo para todos los participantes y en cada visita. Siempre entre 3 y 4999.
+ */
+class MeGustaDeComentario {
+  static MIN = 3;
+  static MAX = 4999;
+
+  static #fnv1a(texto) {
+    let h = 0x811c9dc5;
+    for (const byte of new TextEncoder().encode(texto)) h = Math.imul(h ^ byte, 0x01000193);
+    return h >>> 0;
+  }
+
+  static de(comentario) {
+    const clave = `${String(comentario.usuario ?? "")}\u0000${String(comentario.texto ?? "")}`;
+    const { MIN, MAX } = MeGustaDeComentario;
+    return MIN + (MeGustaDeComentario.#fnv1a(clave) % (MAX - MIN + 1));
+  }
+}
+
+/** Panel de comentarios de un video al estilo de una red de videos cortos, solo lectura (la barra para escribir está desactivada). */
 class PanelDeComentarios extends CapaFlotante {
+  static #miles = new Intl.NumberFormat("es-MX");
   #comentarios;
   #total;
   #urlImagen;
@@ -959,21 +994,32 @@ class PanelDeComentarios extends CapaFlotante {
   constructor(contenedor, boton, comentarios, total, urlImagen) {
     super(contenedor, boton);
     this.#comentarios = Array.isArray(comentarios) ? comentarios : [];
-    this.#total = total;
+    this.#total = Math.max(0, Math.floor(Number(total) || 0));
     this.#urlImagen = urlImagen;
+  }
+
+  /** "1 comentario", "1,234 comentarios". */
+  static titulo(total) {
+    return `${PanelDeComentarios.#miles.format(total)} ${total === 1 ? "comentario" : "comentarios"}`;
+  }
+
+  #elemento(c, plantilla) {
+    const li = plantilla.cloneNode(true);
+    AvatarDeComentario.pintar(li.querySelector("[data-avatar-com]"), c, this.#urlImagen(c.foto_perfil_ruta));
+    li.querySelector("[data-com-usuario]").textContent = c.usuario ? `@${String(c.usuario).replace(/^@+/, "")}` : "";
+    li.querySelector("[data-com-texto]").textContent = String(c.texto ?? "");
+    const fecha = FechaDeComentario.de(c.creado_en);
+    const time = li.querySelector("[data-com-fecha]");
+    if (fecha) { time.textContent = fecha.texto; time.dateTime = fecha.iso; } else time.remove();
+    li.querySelector("[data-com-me-gusta]").textContent = FormatoContador.abreviar(MeGustaDeComentario.de(c));
+    return li;
   }
 
   construir() {
     const capa = document.getElementById("tpl-comentarios").content.firstElementChild.cloneNode(true);
-    capa.querySelector("[data-total]").textContent = FormatoContador.abreviar(this.#total);
+    capa.querySelector("[data-titulo]").textContent = PanelDeComentarios.titulo(this.#total);
     const plantilla = document.getElementById("tpl-comentario").content.firstElementChild;
-    const items = this.#comentarios.map((c) => {
-      const li = plantilla.cloneNode(true);
-      AvatarDeComentario.pintar(li.querySelector("[data-avatar-com]"), c, this.#urlImagen(c.foto_perfil_ruta));
-      li.querySelector("[data-com-usuario]").textContent = c.usuario ? `@${String(c.usuario).replace(/^@+/, "")}` : "";
-      li.querySelector("[data-com-texto]").textContent = String(c.texto ?? "");
-      return li;
-    });
+    const items = this.#comentarios.map((c) => this.#elemento(c, plantilla));
     capa.querySelector("[data-lista]").replaceChildren(...items);
     capa.querySelector("[data-lista]").hidden = !items.length;
     capa.querySelector("[data-vacio]").hidden = items.length > 0;

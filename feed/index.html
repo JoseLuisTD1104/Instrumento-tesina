@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261121-3">
+<link rel="stylesheet" href="feed.css?v=20261121-4">
 </head>
 <body>
 
@@ -174,17 +174,21 @@
   </section>
 </template>
 
-<!-- Panel de comentarios (solo lectura): hoja inferior en móvil, panel lateral dentro de la tarjeta en PC -->
+<!-- Panel de comentarios (solo lectura): hoja inferior dentro de la tarjeta, con el video visible arriba -->
 <template id="tpl-comentarios">
   <div class="capa capa-comentarios" data-capa>
     <div class="capa-fondo" data-fondo></div>
-    <section class="hoja hoja-comentarios" role="dialog" aria-modal="false" aria-label="Comentarios" data-hoja>
+    <section class="hoja hoja-comentarios" role="dialog" aria-modal="false" aria-label="Comentarios del video" data-hoja>
       <header class="hoja-cabecera">
-        <h2 class="hoja-titulo" data-titulo>Comentarios <span class="hoja-total" data-total></span></h2>
-        <button type="button" class="hoja-cerrar" data-cerrar aria-label="Cerrar comentarios"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <h2 class="hoja-titulo" data-titulo></h2>
+        <button type="button" class="hoja-cerrar" data-cerrar aria-label="Cerrar comentarios"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </header>
       <ul class="lista-comentarios" data-lista tabindex="0" aria-label="Lista de comentarios"></ul>
       <p class="comentarios-vacio" data-vacio hidden>Todavía no hay comentarios.</p>
+      <div class="comentar-barra">
+        <span class="comentar-avatar" aria-hidden="true"></span>
+        <input class="comentar-campo" type="text" disabled placeholder="Agregar comentario…" aria-label="Agregar comentario (no disponible)">
+      </div>
     </section>
   </div>
 </template>
@@ -195,6 +199,11 @@
     <div class="comentario-cuerpo">
       <p class="comentario-usuario" data-com-usuario></p>
       <p class="comentario-texto" data-com-texto></p>
+      <p class="comentario-meta"><time data-com-fecha></time><span class="comentario-responder">Responder</span></p>
+    </div>
+    <div class="comentario-me-gusta">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.3-9.1C1.5 8.3 3.4 4.8 6.9 4.5c2-.2 3.8.9 5.1 2.6 1.3-1.7 3.1-2.8 5.1-2.6 3.5.3 5.4 3.8 4.2 6.9-1.8 4.5-9.3 9.1-9.3 9.1z"/></svg>
+      <span data-com-me-gusta></span>
     </div>
   </li>
 </template>
@@ -256,6 +265,6 @@
 
 <script src="../admin/config.js?v=20261120-1"></script>
 <script src="aviso-privacidad.js?v=20261121-1"></script>
-<script src="feed.js?v=20261121-3"></script>
+<script src="feed.js?v=20261121-4"></script>
 </body>
 </html>

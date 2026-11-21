@@ -408,21 +408,69 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .hoja-cerrar:hover { background: var(--surface-hover); }
 .hoja-cerrar svg { width: 20px; height: 20px; }
 
-/* Comentarios: panel lateral dentro de la tarjeta (PC y tablet), hoja inferior en móvil */
-.hoja-comentarios { top: 0; right: 0; bottom: 0; width: min(88%, 380px); border-radius: var(--radius) 0 0 var(--radius); }
-.lista-comentarios { list-style: none; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 16px 16px; }
+/* Comentarios: hoja inferior (~60% de la tarjeta) con el video visible y sin oscurecer arriba */
+.capa-comentarios .capa-fondo { background: transparent; }
+.hoja-comentarios {
+  left: 0; right: 0; bottom: 0;
+  height: max(60%, min(100%, 17rem));
+  border-radius: 1rem 1rem 0 0; overflow: hidden;
+  animation: subir-hoja .22s ease-out;
+}
+@keyframes subir-hoja { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .hoja-comentarios { animation: none; } }
+.hoja-comentarios .hoja-cabecera { padding: 0.75rem 3.25rem; border-bottom: 0; }
+.hoja-comentarios .hoja-titulo { font-size: 0.875rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.hoja-comentarios .hoja-cerrar {
+  right: 0.625rem; width: 2rem; height: 2rem; background: var(--surface-hover);
+}
+.hoja-comentarios .hoja-cerrar:hover { background: #3a3b42; }
+.hoja-comentarios .hoja-cerrar svg { width: 1rem; height: 1rem; }
+.lista-comentarios { list-style: none; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 1rem 0.75rem; }
 .lista-comentarios:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
-.comentario { display: flex; gap: 10px; padding: 10px 0; }
+.comentario { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.625rem 0; }
 .avatar-com {
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  width: 2.5rem; height: 2.5rem; border-radius: 50%; flex-shrink: 0; overflow: hidden;
   display: grid; place-items: center; background: var(--surface-hover);
-  color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .02em;
+  color: #fff; font-size: 0.875rem; font-weight: 700; letter-spacing: .02em;
 }
 .avatar-com img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.comentario-cuerpo { min-width: 0; }
-.comentario-usuario { font-size: 13px; font-weight: 600; color: var(--text-dim); margin-bottom: 2px; overflow-wrap: anywhere; }
-.comentario-texto { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-line; }
-.comentarios-vacio { flex: 1; display: grid; place-items: center; color: var(--text-dim); font-size: 14px; padding: 24px; }
+.comentario-cuerpo { flex: 1; min-width: 0; }
+.comentario-usuario { font-size: 0.8125rem; font-weight: 500; color: var(--text-dim); margin-bottom: 0.125rem; overflow-wrap: anywhere; }
+.comentario-texto { font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-line; }
+.comentario-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 0.375rem; font-size: 0.8125rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.comentario-responder { font-weight: 600; }
+.comentario-me-gusta {
+  flex-shrink: 0; min-width: 2.75rem; padding-top: 0.875rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.125rem;
+  font-size: 0.75rem; color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.comentario-me-gusta svg { width: 1.25rem; height: 1.25rem; stroke-width: 1.8; }
+.comentarios-vacio { flex: 1; display: grid; place-items: center; text-align: center; color: var(--text-dim); font-size: 0.9375rem; padding: 1.5rem; }
+/* Barra para comentar: siempre visible al pie de la hoja y desactivada */
+.comentar-barra {
+  flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom));
+  border-top: 1px solid #2c2d33; background: var(--surface);
+}
+.comentar-avatar { width: 2.25rem; height: 2.25rem; border-radius: 50%; flex-shrink: 0; background: #4a4b52; }
+.comentar-campo {
+  flex: 1; min-width: 0; padding: 0.625rem 1rem; border: 0; border-radius: 999px;
+  background: var(--surface-hover); color: var(--text-dim); font: inherit; font-size: 0.9375rem;
+  cursor: default; opacity: 1; -webkit-text-fill-color: currentColor;
+}
+.comentar-campo::placeholder { color: var(--text-dim); opacity: 1; }
+/* Tarjetas muy angostas (p. ej., móvil con zoom alto): menos márgenes para que quepa el texto */
+@media (max-width: 22rem) {
+  .hoja-comentarios .hoja-cabecera { padding: 0.625rem 2.75rem; }
+  .hoja-comentarios .hoja-cerrar { right: 0.375rem; }
+  .lista-comentarios { padding-inline: 0.625rem; }
+  .comentario { gap: 0.5rem; }
+  .avatar-com { width: 2rem; height: 2rem; font-size: 0.75rem; }
+  .comentario-me-gusta { min-width: 2rem; }
+  .comentar-barra { gap: 0.5rem; padding-inline: 0.625rem; }
+  .comentar-avatar { width: 1.75rem; height: 1.75rem; }
+  .comentar-campo { padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+}
 
 /* Compartir: hoja inferior */
 .hoja-compartir { left: 0; right: 0; bottom: 0; min-height: 210px; border-radius: 16px 16px 0 0; }
@@ -467,8 +515,6 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 @media (max-width: 767px) {
   .action .cuenta { text-shadow: 0 1px 3px rgba(0,0,0,.6); }
-  .hoja-comentarios { top: auto; left: 0; width: 100%; height: 68%; border-radius: 16px 16px 0 0; }
-  .lista-comentarios { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .ventana-enlace { inset: 8px; }
   .menu-mas { right: 64px; bottom: calc(110px + env(safe-area-inset-bottom)); }
 }
