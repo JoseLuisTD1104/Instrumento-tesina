@@ -24,7 +24,7 @@ const jsonA64 = (objeto: unknown) => aBase64Url(codificador.encode(JSON.stringif
 export class PaseParticipante {
   /** Única constante de duración: vence el pase y, con expiraEnMs, la sesión en sesiones_activas. */
   static DURACION_S = 45 * 60;
-  /** Máximo que acepta la base para una sesión: si la duración lo pasara, no se emite ningún pase. */
+  /** Máximo que acepta la base para una sesión: no se emite un pase más largo ni se acepta uno al verificar. */
   static MAXIMO_BASE_S = 60 * 60;
   static ROL = "participante";
   static TOLERANCIA_RELOJ_S = 60;
@@ -73,7 +73,10 @@ export class PaseParticipante {
         Number.isInteger(p?.iat) && Number.isInteger(p?.exp) &&
         p.iat <= ahora + PaseParticipante.TOLERANCIA_RELOJ_S &&
         p.exp > ahora &&
-        p.exp - p.iat <= PaseParticipante.DURACION_S;
+        // Tope fijo de la base (1 h), no la duración de emisión: así un cambio de DURACION_S no hace que una
+        // función verifique con otra duración y rechace pases vigentes. El vencimiento real lo deciden exp y
+        // sesiones_activas.expira_en.
+        p.exp - p.iat <= PaseParticipante.MAXIMO_BASE_S;
       return valido ? { iat: p.iat, jti: p.jti } : null;
     } catch {
       return null;
