@@ -502,9 +502,29 @@ dialog .acciones { margin-top: 16px; }
 .actor-fila { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
 .actor-fila:last-child { border-bottom: 0; }
 .actor-fila:hover { background: var(--surface-2); }
-.actor-cara { width: 56px; height: 56px; flex-shrink: 0; border-radius: 50%; object-fit: cover; background: var(--surface-2); }
+.actor-cara { width: 48px; height: 64px; flex-shrink: 0; border-radius: 8px; object-fit: cover; background: var(--surface-2); } /* 3:4 */
 .actor-textos { flex: 1; min-width: 0; }
 .actor-alias { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .actor-acciones { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .actor-acciones .btn-sec, .actor-acciones .btn-peligro { min-height: 34px; padding: 6px 12px; font-size: 13px; }
 .btn-archivo:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.miniatura.cara-3x4 { width: 60px; height: 80px; border-radius: 8px; }
+
+/* ---------- Recorte de la cara (3:4) ---------- */
+.dialogo-recorte { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.dialogo-recorte .ayuda { font-size: 13px; line-height: 1.5; color: var(--text-dim); margin-bottom: 14px; }
+.recorte-marco {
+  /* El marco cabe siempre: a lo ancho del diálogo y sin pasar del alto disponible (deja sitio a zoom y botones). */
+  width: min(100%, 300px, calc((100dvh - 300px) * 3 / 4)); min-width: 150px;
+  margin: 0 auto; aspect-ratio: 3 / 4; border-radius: 10px; overflow: hidden;
+  background: var(--surface-2); border: 2px solid var(--text);
+}
+.recorte-marco canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.recorte-marco canvas:active { cursor: grabbing; }
+.recorte-marco:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.recorte-marco canvas:focus { outline: none; }
+.recorte-zoom { display: flex; align-items: center; gap: 12px; margin-top: 16px; font-size: 14px; font-weight: 600; color: var(--text-dim); }
+.recorte-zoom input { flex: 1; min-width: 0; min-height: 44px; accent-color: var(--accent); }
+.recorte-zoom output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+.dialogo-recorte .acciones { flex-wrap: wrap; }
+.dialogo-recorte .acciones button { min-height: 44px; }

@@ -29,7 +29,8 @@ class PanelPage {
     const preparador = new PreparadorDeImagen();
     const controles = new ControlesDeReconocimiento(reconocimiento, preparador);
     this.#administrar = new PestanaAdministrar(repo, dialogos, controles);
-    this.#actores = new PestanaActores(reconocimiento, preparador, dialogos);
+    const recortador = new RecortadorDeCara(document.getElementById("dialogo-recorte"));
+    this.#actores = new PestanaActores(reconocimiento, recortador, dialogos);
     subir.alSubir(() => this.#administrar.marcarDesactualizada());
     controles.alCambiarAsignaciones(() => this.#actores.marcarDesactualizada());
     this.#actores.alCambiarActores(() => this.#administrar.marcarDesactualizada());

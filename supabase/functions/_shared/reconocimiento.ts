@@ -199,6 +199,7 @@ export class VideosDeReconocimiento {
     return filas.length === 1;
   }
 
+  /** Lanza ErrorConflicto si el actor ya está en otro video (índice único de videos.actor_id). */
   async asignarActor(id: string, actorId: string | null): Promise<boolean> {
     const filas = await this.#servicio.actualizar("videos", { id: `eq.${id}`, select: "id" }, { actor_id: actorId });
     return filas.length === 1;
@@ -206,6 +207,23 @@ export class VideosDeReconocimiento {
 
   async cuantosDelActor(actorId: string): Promise<number> {
     return await this.#servicio.contar("videos", { actor_id: `eq.${actorId}` });
+  }
+
+  /** ¿El actor está asignado a algún video distinto de `videoId`? */
+  async actorEnOtroVideo(actorId: string, videoId: string): Promise<boolean> {
+    return await this.#servicio.contar("videos", { actor_id: `eq.${actorId}`, id: `neq.${videoId}` }) > 0;
+  }
+
+  /** Map(actor_id → numero_video del video al que está asignado; null si el video aún no tiene número). */
+  async numerosPorActor(): Promise<Map<string, number | null>> {
+    const filas = await this.#servicio.consultar("videos", { select: "actor_id,numero_video", actor_id: "not.is.null" });
+    const numeros = new Map<string, number | null>();
+    for (const f of filas) {
+      const actor = typeof f.actor_id === "string" && PATRON_UUID.test(f.actor_id) ? f.actor_id.toLowerCase() : null;
+      if (!actor) throw new ErrorControlado("video_actor_ilegible");
+      numeros.set(actor, Number.isInteger(f.numero_video) ? f.numero_video as number : null);
+    }
+    return numeros;
   }
 }
 

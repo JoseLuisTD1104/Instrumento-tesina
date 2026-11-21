@@ -1,10 +1,12 @@
 // Edge Function "admin-reconocimiento" (solo administrador). Verifica la sesión igual que codigo-actual
 // (JWT verificado por Supabase Auth y comparado con ADMIN_UID; falla cerrada). Solo POST con JSON de
 // máx. 700 KB y { accion, ... }:
-// - listar_actores: { actores: [{ id, alias, cara_url, videos }] } (URL firmada de 10 min, videos asignados).
+// - listar_actores: { actores: [{ id, alias, cara_url, numero_video }] } (URL firmada de 10 min; numero_video del
+//   video asignado o null). Un actor solo puede estar en un video (índice único de videos.actor_id).
 // - listar_miniaturas: { miniaturas: [{ video_id, miniatura_url }] } para la vista previa del panel.
 // - crear_actor { alias, imagen }, cambiar_cara { actor_id, imagen }, borrar_actor { actor_id } (se rechaza
-//   si tiene videos asignados), subir_miniatura { video_id, imagen }, asignar_actor { video_id, actor_id | null }.
+//   si tiene videos asignados), subir_miniatura { video_id, imagen }, asignar_actor { video_id, actor_id | null } (409 actor_ya_asignado si
+//   el actor ya está en otro video).
 // imagen va en base64; el tipo (jpeg, png o webp) se decide por los bytes iniciales y no puede pasar de
 // 400 KB ya decodificada. La ruta la genera el servidor; al reemplazar una imagen se borra la anterior.
 // Errores con etiquetas fijas, sin datos. Nunca registra ids, alias, rutas ni tokens.
@@ -38,6 +40,7 @@ const INVALIDA: Resultado = [400, { error: "solicitud_invalida" }];
 const IMAGEN_INVALIDA: Resultado = [400, { error: "imagen_invalida" }];
 const NO_ENCONTRADO: Resultado = [404, { error: "no_encontrado" }];
 const OK: Resultado = [200, { ok: true }];
+const ACTOR_YA_ASIGNADO: Resultado = [409, { error: "actor_ya_asignado" }];
 
 function uuid(valor: unknown): string | null {
   return typeof valor === "string" && PATRON_UUID.test(valor) ? valor.toLowerCase() : null;
@@ -69,12 +72,12 @@ class AccionesDeReconocimiento {
   }
 
   async #listarActores(): Promise<Resultado> {
-    const [actores, videos] = await Promise.all([this.#actores.listar(), this.#videos.todos()]);
-    const conteo = new Map<string, number>();
-    for (const v of videos) if (v.actor_id) conteo.set(v.actor_id, (conteo.get(v.actor_id) ?? 0) + 1);
+    const [actores, numeros] = await Promise.all([this.#actores.listar(), this.#videos.numerosPorActor()]);
     const urls = await this.#almacen.firmar("caras", actores.map((a) => a.cara_ruta));
     return [200, {
-      actores: actores.map((a) => ({ id: a.id, alias: a.alias, cara_url: urls.get(a.cara_ruta)!, videos: conteo.get(a.id) ?? 0 })),
+      actores: actores.map((a) => ({
+        id: a.id, alias: a.alias, cara_url: urls.get(a.cara_ruta)!, numero_video: numeros.get(a.id) ?? null,
+      })),
     }];
   }
 
@@ -150,8 +153,16 @@ class AccionesDeReconocimiento {
     const videoId = uuid(videoRecibido);
     const actorId = actorRecibido === null ? null : uuid(actorRecibido);
     if (!videoId || (actorRecibido !== null && !actorId)) return INVALIDA;
-    if (actorId && !(await this.#actores.leer(actorId))) return NO_ENCONTRADO;
-    return (await this.#videos.asignarActor(videoId, actorId)) ? OK : NO_ENCONTRADO;
+    if (actorId) {
+      if (!(await this.#actores.leer(actorId))) return NO_ENCONTRADO;
+      if (await this.#videos.actorEnOtroVideo(actorId, videoId)) return ACTOR_YA_ASIGNADO;
+    }
+    try {
+      return (await this.#videos.asignarActor(videoId, actorId)) ? OK : NO_ENCONTRADO;
+    } catch (e) {
+      if (e instanceof ErrorConflicto) return ACTOR_YA_ASIGNADO; // otra asignación simultánea ganó el índice único
+      throw e;
+    }
   }
 
   /** Guarda la ruta nueva; si no se pudo (o falló), borra el objeto recién subido. */

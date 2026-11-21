@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261121-6">
+<link rel="stylesheet" href="feed.css?v=20261121-7">
 </head>
 <body>
 
@@ -117,16 +117,21 @@
 <!-- Pasos 5, 6 y 8: cuadrícula de selección (caras o miniaturas) con "Ninguna/Ninguno" y "Aceptar" -->
 <section class="pantalla pantalla-seleccion" id="seleccion" aria-labelledby="seleccion-titulo" hidden>
   <div class="seleccion-tarjeta">
-    <div class="logo pantalla-logo">corto<span>.</span></div>
-    <h1 class="seleccion-titulo" id="seleccion-titulo" tabindex="-1"></h1>
-    <p class="seleccion-subtitulo" id="seleccion-subtitulo"></p>
+    <div class="seleccion-cabecera">
+      <div class="logo pantalla-logo">corto<span>.</span></div>
+      <h1 class="seleccion-titulo" id="seleccion-titulo" tabindex="-1"></h1>
+      <p class="seleccion-subtitulo" id="seleccion-subtitulo"></p>
+    </div>
+    <!-- Solo la lista se desplaza; "Ninguna/Ninguno" y "Aceptar" quedan siempre a la vista. -->
     <div class="rejilla" id="seleccion-rejilla" role="group" aria-labelledby="seleccion-titulo"></div>
-    <button type="button" class="opcion-ninguno" id="seleccion-ninguno" aria-pressed="false">
-      <span class="opcion-ninguno-casilla" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-      <span id="seleccion-ninguno-texto"></span>
-    </button>
-    <p class="pantalla-error" id="seleccion-error" role="alert" hidden></p>
-    <button type="button" class="pantalla-boton" id="seleccion-aceptar" aria-label="Aceptar" disabled>Aceptar</button>
+    <div class="seleccion-pie">
+      <p class="pantalla-error" id="seleccion-error" role="alert" hidden></p>
+      <button type="button" class="opcion-ninguno" id="seleccion-ninguno" aria-pressed="false">
+        <span class="opcion-ninguno-casilla" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <span id="seleccion-ninguno-texto"></span>
+      </button>
+      <button type="button" class="pantalla-boton" id="seleccion-aceptar" aria-label="Aceptar" disabled>Aceptar</button>
+    </div>
   </div>
 </section>
 
@@ -291,6 +296,6 @@
 
 <script src="../admin/config.js?v=20261120-1"></script>
 <script src="aviso-privacidad.js?v=20261121-1"></script>
-<script src="feed.js?v=20261121-6"></script>
+<script src="feed.js?v=20261121-7"></script>
 </body>
 </html>

@@ -3,8 +3,9 @@
 /**
  * Material de reconocimiento: actores (alias y cara), el actor de cada video y su miniatura. Todo pasa por la
  * Edge Function "admin-reconocimiento" (solo administrador): el panel nunca escribe directo en Storage ni en
- * la tabla actores. Antes de subir, cada imagen se reduce en el navegador a 480 px en su lado mayor y se
- * convierte a JPEG (calidad 0.8). Todo texto se pinta con textContent.
+ * la tabla actores. Cada actor está en un solo video (índice único en la base). Antes de subir, la cara se
+ * recorta en el navegador a 360 × 480 px (3:4) y la miniatura se reduce a 480 px en su lado mayor; ambas se
+ * convierten a JPEG (calidad 0.8). Todo texto se pinta con textContent.
  */
 
 /** Llamadas a "admin-reconocimiento" con mensajes claros para el administrador (sin datos internos). */
@@ -14,9 +15,10 @@ class ClienteReconocimiento {
     alias_invalido: "El alias debe tener de 1 a 30 caracteres y no puede llevar < > \" &.",
     alias_repetido: "Ya existe un actor con ese alias.",
     imagen_invalida: "El servidor rechazó la imagen: debe ser JPEG, PNG o WebP y pesar como máximo 400 KB.",
-    actor_con_videos: "No se puede borrar: el actor tiene videos asignados. Quítaselos primero en \"Administrar videos\".",
+    actor_con_videos: "No se puede borrar: el actor está asignado a un video. Quítaselo primero en \"Administrar videos\".",
     no_encontrado: "El actor o el video ya no existe. Recarga la lista.",
     cambio_simultaneo: "Se guardó otro cambio al mismo tiempo. Recarga e intenta de nuevo.",
+    actor_ya_asignado: "Ese actor ya está asignado a otro video.",
   });
 
   #cliente;
@@ -42,7 +44,7 @@ class ClienteReconocimiento {
     return data;
   }
 
-  /** [{ id, alias, cara_url, videos }] */
+  /** [{ id, alias, cara_url, numero_video }]; numero_video es el del video asignado, o null. */
   async listarActores() {
     const datos = await this.#invocar("listar_actores");
     if (!Array.isArray(datos?.actores)) throw new ErrorPanel("No se pudo leer la lista de actores.");
@@ -72,22 +74,46 @@ class ClienteReconocimiento {
 }
 
 /**
- * Prepara una imagen para subirla: solo JPEG, PNG o WebP (por tipo y por firma), reducida a 480 px en su lado
- * mayor y convertida a JPEG con calidad 0.8 en un canvas. Devuelve el base64 (sin prefijo) y una URL local
- * (blob:) para la vista previa, que hay que liberar con liberar().
+ * Convierte un lienzo a JPEG con calidad 0.8. Devuelve el base64 (sin prefijo) y una URL local (blob:) para la
+ * vista previa, que hay que liberar con liberar().
  */
-class PreparadorDeImagen {
-  static LADO_MAXIMO = 480;
+class CodificadorJpeg {
   static CALIDAD = 0.8;
 
-  async preparar(archivo) {
-    await ValidadorVideo.validarImagen(archivo); // tipo declarado y bytes iniciales: jpeg, png o webp
-    let mapa;
+  static async codificar(lienzo) {
+    const blob = await new Promise((resolver) => lienzo.toBlob(resolver, "image/jpeg", CodificadorJpeg.CALIDAD));
+    if (!blob) throw new ErrorPanel("No se pudo convertir la imagen.");
+    return { base64: await CodificadorJpeg.#base64(blob), vista: URL.createObjectURL(blob) };
+  }
+
+  /** Abre la imagen ya validada (tipo declarado y bytes iniciales: jpeg, png o webp). */
+  static async abrir(archivo) {
+    await ValidadorVideo.validarImagen(archivo);
     try {
-      mapa = await createImageBitmap(archivo);
+      return await createImageBitmap(archivo);
     } catch {
       throw new ErrorPanel("No se pudo leer la imagen.");
     }
+  }
+
+  static liberar(vista) {
+    if (vista?.startsWith("blob:")) URL.revokeObjectURL(vista);
+  }
+
+  static async #base64(blob) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binario = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binario);
+  }
+}
+
+/** Miniaturas de video: reducidas a 480 px en su lado mayor y convertidas a JPEG. */
+class PreparadorDeImagen {
+  static LADO_MAXIMO = 480;
+
+  async preparar(archivo) {
+    const mapa = await CodificadorJpeg.abrir(archivo);
     try {
       const escala = Math.min(1, PreparadorDeImagen.LADO_MAXIMO / Math.max(mapa.width, mapa.height));
       const lienzo = document.createElement("canvas");
@@ -97,23 +123,169 @@ class PreparadorDeImagen {
       ctx.fillStyle = "#fff"; // JPEG no tiene transparencia
       ctx.fillRect(0, 0, lienzo.width, lienzo.height);
       ctx.drawImage(mapa, 0, 0, lienzo.width, lienzo.height);
-      const blob = await new Promise((resolver) => lienzo.toBlob(resolver, "image/jpeg", PreparadorDeImagen.CALIDAD));
-      if (!blob) throw new ErrorPanel("No se pudo convertir la imagen.");
-      return { base64: await PreparadorDeImagen.#base64(blob), vista: URL.createObjectURL(blob) };
+      return await CodificadorJpeg.codificar(lienzo);
     } finally {
       mapa.close();
     }
   }
 
-  liberar(vista) {
-    if (vista?.startsWith("blob:")) URL.revokeObjectURL(vista);
+  liberar(vista) { CodificadorJpeg.liberar(vista); }
+}
+
+/**
+ * Ventana de recorte de la cara: marco fijo 3:4 en el que el administrador arrastra la imagen (ratón, dedo o
+ * flechas) y ajusta el zoom con el deslizador o con + y −. El zoom mínimo hace que la imagen cubra el marco y
+ * el máximo es 4×; la imagen nunca deja huecos dentro del marco. El lienzo de la vista tiene la misma
+ * resolución que el recorte final (360 × 480), así lo que se ve es exactamente lo que se sube.
+ */
+class RecortadorDeCara {
+  static ANCHO = 360;
+  static ALTO = 480;
+  static ZOOM_MAXIMO = 4;
+  static PASO_TECLA = 10;  // px del recorte por pulsación (Mayús: ×4)
+  static PASO_ZOOM = 0.1;
+
+  #dialogo;
+  #lienzo;
+  #zoom;
+  #valorZoom;
+  #mapa = null;
+  #escalaMinima = 1;
+  #factor = 1;  // zoom actual, de 1 a ZOOM_MAXIMO
+  #x = 0;       // esquina superior izquierda de la imagen, en px del recorte
+  #y = 0;
+  #arrastre = null;
+
+  constructor(dialogo) {
+    this.#dialogo = dialogo;
+    this.#lienzo = dialogo.querySelector("[data-recorte-lienzo]");
+    this.#zoom = dialogo.querySelector("[data-recorte-zoom]");
+    this.#valorZoom = dialogo.querySelector("[data-recorte-zoom-valor]");
+    this.#lienzo.width = RecortadorDeCara.ANCHO;
+    this.#lienzo.height = RecortadorDeCara.ALTO;
+    this.#zoom.min = "1";
+    this.#zoom.max = String(RecortadorDeCara.ZOOM_MAXIMO);
+    this.#zoom.step = "0.01";
+    this.#zoom.addEventListener("input", () => this.#ponerZoom(Number(this.#zoom.value)));
+    this.#lienzo.addEventListener("pointerdown", (e) => this.#empezarArrastre(e));
+    this.#lienzo.addEventListener("pointermove", (e) => this.#arrastrar(e));
+    this.#lienzo.addEventListener("pointerup", (e) => this.#terminarArrastre(e));
+    this.#lienzo.addEventListener("pointercancel", (e) => this.#terminarArrastre(e));
+    this.#lienzo.addEventListener("keydown", (e) => this.#tecla(e));
+    this.#lienzo.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this.#ponerZoom(this.#factor * (e.deltaY < 0 ? 1.08 : 1 / 1.08));
+    }, { passive: false });
   }
 
-  static async #base64(blob) {
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let binario = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return btoa(binario);
+  /** Abre la ventana con la imagen. Resuelve con { base64, vista } del recorte, o null si se cancela. */
+  async recortar(archivo) {
+    const mapa = await CodificadorJpeg.abrir(archivo);
+    this.#mapa = mapa;
+    this.#escalaMinima = Math.max(RecortadorDeCara.ANCHO / mapa.width, RecortadorDeCara.ALTO / mapa.height);
+    this.#factor = 1;
+    this.#x = (RecortadorDeCara.ANCHO - mapa.width * this.#escalaMinima) / 2;
+    this.#y = (RecortadorDeCara.ALTO - mapa.height * this.#escalaMinima) / 2;
+    this.#pintar();
+    try {
+      const valor = await new Promise((resolver) => {
+        this.#dialogo.returnValue = "";
+        this.#dialogo.addEventListener("close", () => resolver(this.#dialogo.returnValue), { once: true });
+        this.#dialogo.showModal();
+        this.#lienzo.focus();
+      });
+      return valor === "usar" ? await CodificadorJpeg.codificar(this.#lienzo) : null;
+    } finally {
+      this.#arrastre = null;
+      this.#mapa = null;
+      mapa.close();
+    }
+  }
+
+  liberar(vista) { CodificadorJpeg.liberar(vista); }
+
+  #escala() { return this.#escalaMinima * this.#factor; }
+
+  /** Cambia el zoom dejando fijo el punto de la imagen que está en el centro del marco. */
+  #ponerZoom(factor) {
+    if (!this.#mapa || !Number.isFinite(factor)) return;
+    const nuevo = Math.min(RecortadorDeCara.ZOOM_MAXIMO, Math.max(1, factor));
+    const cx = RecortadorDeCara.ANCHO / 2;
+    const cy = RecortadorDeCara.ALTO / 2;
+    const antes = this.#escala();
+    this.#factor = nuevo;
+    const despues = this.#escala();
+    this.#x = cx - ((cx - this.#x) / antes) * despues;
+    this.#y = cy - ((cy - this.#y) / antes) * despues;
+    this.#pintar();
+  }
+
+  #mover(dx, dy) {
+    this.#x += dx;
+    this.#y += dy;
+    this.#pintar();
+  }
+
+  /** Mantiene la imagen cubriendo el marco y dibuja el recorte. */
+  #pintar() {
+    if (!this.#mapa) return;
+    const escala = this.#escala();
+    const ancho = this.#mapa.width * escala;
+    const alto = this.#mapa.height * escala;
+    this.#x = Math.min(0, Math.max(RecortadorDeCara.ANCHO - ancho, this.#x));
+    this.#y = Math.min(0, Math.max(RecortadorDeCara.ALTO - alto, this.#y));
+    const ctx = this.#lienzo.getContext("2d");
+    ctx.fillStyle = "#fff"; // JPEG no tiene transparencia
+    ctx.fillRect(0, 0, RecortadorDeCara.ANCHO, RecortadorDeCara.ALTO);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(this.#mapa, this.#x, this.#y, ancho, alto);
+    this.#zoom.value = String(this.#factor);
+    const texto = `${this.#factor.toLocaleString("es-MX", { maximumFractionDigits: 1 })}×`;
+    this.#zoom.setAttribute("aria-valuetext", texto);
+    this.#valorZoom.textContent = texto;
+  }
+
+  /** Px de pantalla → px del recorte (el lienzo se muestra escalado por CSS). */
+  #proporcion() {
+    const ancho = this.#lienzo.getBoundingClientRect().width;
+    return ancho > 0 ? RecortadorDeCara.ANCHO / ancho : 1;
+  }
+
+  #empezarArrastre(e) {
+    if (e.button !== 0) return;
+    this.#arrastre = { id: e.pointerId, x: e.clientX, y: e.clientY, proporcion: this.#proporcion() };
+    this.#lienzo.setPointerCapture(e.pointerId);
+    this.#lienzo.focus();
+  }
+
+  #arrastrar(e) {
+    const a = this.#arrastre;
+    if (!a || a.id !== e.pointerId) return;
+    this.#mover((e.clientX - a.x) * a.proporcion, (e.clientY - a.y) * a.proporcion);
+    a.x = e.clientX;
+    a.y = e.clientY;
+  }
+
+  #terminarArrastre(e) {
+    if (this.#arrastre?.id !== e.pointerId) return;
+    this.#arrastre = null;
+    if (this.#lienzo.hasPointerCapture(e.pointerId)) this.#lienzo.releasePointerCapture(e.pointerId);
+  }
+
+  #tecla(e) {
+    const paso = RecortadorDeCara.PASO_TECLA * (e.shiftKey ? 4 : 1);
+    // Las flechas mueven la imagen: → la desplaza a la derecha, igual que arrastrarla.
+    const movimientos = { ArrowLeft: [-paso, 0], ArrowRight: [paso, 0], ArrowUp: [0, -paso], ArrowDown: [0, paso] };
+    if (movimientos[e.key]) {
+      this.#mover(...movimientos[e.key]);
+    } else if (e.key === "+" || e.key === "=" || e.key === "Add") {
+      this.#ponerZoom(this.#factor + RecortadorDeCara.PASO_ZOOM);
+    } else if (e.key === "-" || e.key === "_" || e.key === "Subtract" || e.key === "−") {
+      this.#ponerZoom(this.#factor - RecortadorDeCara.PASO_ZOOM);
+    } else {
+      return;
+    }
+    e.preventDefault();
   }
 }
 
@@ -127,6 +299,7 @@ class ControlesDeReconocimiento {
   #actores = [];
   #miniaturas = new Map();
   #vistasLocales = new Set();
+  #selectores = new Map(); // video_id → { selector, actual } de las filas pintadas
   #alCambiarAsignaciones = () => {};
 
   constructor(cliente, preparador) {
@@ -134,12 +307,13 @@ class ControlesDeReconocimiento {
     this.#preparador = preparador;
   }
 
-  /** Avisa cuando cambia la asignación de actores (para recalcular los conteos de la pestaña Actores). */
+  /** Avisa cuando cambia la asignación de actores (para actualizar la pestaña Actores). */
   alCambiarAsignaciones(callback) { this.#alCambiarAsignaciones = callback; }
 
   async cargar() {
     for (const vista of this.#vistasLocales) this.#preparador.liberar(vista);
     this.#vistasLocales.clear();
+    this.#selectores.clear();
     const [actores, miniaturas] = await Promise.all([this.#cliente.listarActores(), this.#cliente.listarMiniaturas()]);
     this.#actores = actores;
     this.#miniaturas = miniaturas;
@@ -169,9 +343,8 @@ class ControlesDeReconocimiento {
       if (url) previa.src = url; else previa.removeAttribute("src");
     };
 
-    selector.replaceChildren(new Option("Sin actor", ""), ...this.#actores.map((a) => new Option(a.alias, a.id)));
-    if (actual.actor_id && !this.#actores.some((a) => a.id === actual.actor_id)) selector.append(new Option("Actor desconocido", actual.actor_id));
-    selector.value = actual.actor_id ?? "";
+    this.#selectores.set(video.id, { selector, actual });
+    this.#pintarOpciones(video.id);
     previa.alt = `Miniatura de ${etiqueta}`;
     ponerVista(this.#miniaturas.get(video.id) ?? null);
     pintarAdvertencia();
@@ -184,13 +357,13 @@ class ControlesDeReconocimiento {
         await this.#cliente.asignarActor(video.id, elegido);
         actual.actor_id = elegido;
         alActualizar({ actor_id: elegido });
-        PanelFormato.mensaje(estado, "Actor guardado.", "exito");
+        PanelFormato.mensaje(estado, elegido ? "Actor guardado." : "Se quitó el actor.", "exito");
         this.#alCambiarAsignaciones();
       } catch (e) {
-        selector.value = actual.actor_id ?? "";
         PanelFormato.mensaje(estado, PanelFormato.errorVisible(e, "No se pudo guardar el actor."), "error");
       } finally {
         selector.disabled = false;
+        this.#pintarTodasLasOpciones();
         pintarAdvertencia();
       }
     });
@@ -222,12 +395,39 @@ class ControlesDeReconocimiento {
       }
     });
   }
+
+  /** Actores ocupados por otros videos (según las filas pintadas, que son todos los videos). */
+  #ocupadosPorOtros(videoId) {
+    const ocupados = new Set();
+    for (const [id, { selector, actual }] of this.#selectores) {
+      if (!selector.isConnected) { this.#selectores.delete(id); continue; } // fila ya no pintada (video borrado)
+      if (id !== videoId && actual.actor_id) ocupados.add(actual.actor_id);
+    }
+    return ocupados;
+  }
+
+  /** "Sin actor", los actores sin video y el actor que ya tiene este video. */
+  #pintarOpciones(videoId) {
+    const { selector, actual } = this.#selectores.get(videoId);
+    const ocupados = this.#ocupadosPorOtros(videoId);
+    const libres = this.#actores.filter((a) => a.id === actual.actor_id || !ocupados.has(a.id));
+    selector.replaceChildren(new Option("Sin actor", ""), ...libres.map((a) => new Option(a.alias, a.id)));
+    if (actual.actor_id && !this.#actores.some((a) => a.id === actual.actor_id)) selector.append(new Option("Actor desconocido", actual.actor_id));
+    selector.value = actual.actor_id ?? "";
+  }
+
+  #pintarTodasLasOpciones() {
+    for (const id of [...this.#selectores.keys()]) {
+      if (this.#selectores.get(id)?.selector.isConnected) this.#pintarOpciones(id);
+      else this.#selectores.delete(id);
+    }
+  }
 }
 
-/** Pestaña "Actores": lista con cara, alias y videos asignados; crear, cambiar la cara y borrar. */
+/** Pestaña "Actores": lista con cara, alias y video asignado; crear, cambiar la cara (recortada) y borrar. */
 class PestanaActores {
   #cliente;
-  #preparador;
+  #recortador;
   #dialogos;
   #desactualizada = true;
   #ocupado = false;
@@ -246,9 +446,10 @@ class PestanaActores {
   #crear = document.getElementById("actor-crear");
   #mensajeForm = document.getElementById("actor-mensaje");
 
-  constructor(cliente, preparador, dialogos) {
+  /** recortador: RecortadorDeCara (toda cara se sube recortada a 3:4). */
+  constructor(cliente, recortador, dialogos) {
     this.#cliente = cliente;
-    this.#preparador = preparador;
+    this.#recortador = recortador;
     this.#dialogos = dialogos;
   }
 
@@ -292,15 +493,15 @@ class PestanaActores {
     cara.src = actor.cara_url;
     cara.alt = `Cara de ${actor.alias}`;
     fila.querySelector("[data-alias]").textContent = actor.alias;
-    const videos = Number(actor.videos) || 0;
-    fila.querySelector("[data-videos]").textContent = videos === 1 ? "1 video asignado" : `${videos} videos asignados`;
+    const asignado = actor.numero_video !== null && actor.numero_video !== undefined;
+    fila.querySelector("[data-asignacion]").textContent = asignado ? `Asignado al video N.º ${actor.numero_video}` : "Sin asignar";
     const cambiar = fila.querySelector("[data-cambiar-cara]");
     cambiar.setAttribute("aria-label", `Cambiar la cara de ${actor.alias}`);
     cambiar.addEventListener("change", () => this.#cambiarCara(actor, cambiar, cara));
     const borrar = fila.querySelector("[data-borrar-actor]");
-    borrar.disabled = videos > 0;
+    borrar.disabled = asignado;
     borrar.setAttribute("aria-label", `Borrar a ${actor.alias}`);
-    borrar.title = videos > 0 ? "Tiene videos asignados: quítaselos antes de borrarlo." : "";
+    borrar.title = asignado ? "Está asignado a un video: quítaselo antes de borrarlo." : "";
     borrar.addEventListener("click", () => this.#borrar(actor));
     return fila;
   }
@@ -317,15 +518,17 @@ class PestanaActores {
     if (!archivo) return;
     PanelFormato.mensaje(this.#mensajeForm, "");
     try {
-      const preparada = await this.#preparador.preparar(archivo);
-      this.#preparador.liberar(this.#nueva?.vista);
+      const preparada = await this.#recortador.recortar(archivo);
+      if (!preparada) return; // canceló el recorte: se conserva la cara elegida antes
+      this.#recortador.liberar(this.#nueva?.vista);
       this.#nueva = preparada;
       this.#vista.src = preparada.vista;
       this.#vista.hidden = false;
     } catch (e) {
       PanelFormato.mensaje(this.#mensajeForm, PanelFormato.errorVisible(e, "No se pudo leer la imagen."), "error");
+    } finally {
+      this.#actualizarFormulario();
     }
-    this.#actualizarFormulario();
   }
 
   async #crearActor() {
@@ -339,7 +542,7 @@ class PestanaActores {
     PanelFormato.mensaje(this.#mensajeForm, "Creando actor…");
     try {
       await this.#cliente.crearActor(alias, this.#nueva.base64);
-      this.#preparador.liberar(this.#nueva.vista);
+      this.#recortador.liberar(this.#nueva.vista);
       this.#nueva = null;
       this.#alias.value = "";
       this.#vista.hidden = true;
@@ -361,17 +564,18 @@ class PestanaActores {
     this.#ocupado = true;
     entrada.disabled = true;
     const anterior = cara.src;
-    PanelFormato.mensaje(this.#mensaje, `Cambiando la cara de «${actor.alias}»…`);
     let vista = null;
     try {
-      const preparada = await this.#preparador.preparar(archivo);
+      const preparada = await this.#recortador.recortar(archivo);
+      if (!preparada) return; // canceló el recorte
+      PanelFormato.mensaje(this.#mensaje, `Cambiando la cara de «${actor.alias}»…`);
       vista = preparada.vista;
       cara.src = vista;
       await this.#cliente.cambiarCara(actor.id, preparada.base64);
       PanelFormato.mensaje(this.#mensaje, `Se cambió la cara de «${actor.alias}».`, "exito");
     } catch (e) {
       cara.src = anterior;
-      this.#preparador.liberar(vista);
+      this.#recortador.liberar(vista);
       PanelFormato.mensaje(this.#mensaje, PanelFormato.errorVisible(e, "No se pudo cambiar la cara."), "error");
     } finally {
       this.#ocupado = false;

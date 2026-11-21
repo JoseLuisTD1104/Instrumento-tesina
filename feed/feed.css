@@ -312,27 +312,46 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 @media (max-width: 600px) { .pantalla-tarjeta { padding: 28px 20px; } .pantalla-texto { font-size: 17px; } }
 
 /* ---------- Pasos 5, 6 y 8: cuadrícula de selección (cualquier cantidad de caras o miniaturas) ---------- */
-/* La pantalla se desplaza por su cuenta si la cuadrícula no cabe; margin: auto la centra cuando sí cabe. */
-.pantalla-seleccion { display: flex; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
-.seleccion-tarjeta {
-  margin: auto; width: 100%; max-width: 960px; display: flex; flex-direction: column; gap: 16px;
-  background: var(--surface); border-radius: var(--radius); padding: 28px clamp(16px, 4vw, 32px);
+/* Tarjeta angosta de hasta ~85 % del alto: cabecera arriba, solo la lista se desplaza y el pie
+   ("Ninguna/Ninguno" y "Aceptar") queda fijo abajo. En pantallas muy bajas (p. ej., zoom alto) la tarjeta
+   conserva un alto mínimo y entonces se desplaza la pantalla completa. */
+.pantalla-seleccion {
+  display: flex; overflow-y: auto; overscroll-behavior: contain;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
 }
-.seleccion-titulo { font-size: clamp(20px, 2.6vw, 26px); line-height: 1.3; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+.seleccion-tarjeta {
+  /* Más angosta cuanto menos alto hay (zoom alto, teléfono acostado): así cabe más de una fila. */
+  margin: auto; width: 100%; max-width: min(440px, max(300px, 70vh)); max-width: min(440px, max(300px, 70dvh)); min-height: 0;
+  max-height: max(85vh, 340px); max-height: max(85dvh, 340px);
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--surface); border-radius: var(--radius); padding: 22px clamp(14px, 3vw, 24px) 18px;
+}
+.seleccion-cabecera { flex: none; display: flex; flex-direction: column; gap: 10px; }
+.seleccion-titulo { font-size: clamp(19px, 2.4vw, 24px); line-height: 1.3; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
 .seleccion-titulo:focus { outline: none; }
 .seleccion-titulo:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; border-radius: 6px; }
-.seleccion-subtitulo { margin-top: -8px; font-size: 16px; line-height: 1.5; color: var(--text-dim); text-align: center; }
-.rejilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(132px, calc(50% - 6px)), 1fr)); }
-.pantalla-seleccion[data-forma="miniatura"] .rejilla { grid-template-columns: repeat(auto-fill, minmax(min(120px, calc(50% - 6px)), 1fr)); }
+.seleccion-subtitulo { font-size: 15px; line-height: 1.45; color: var(--text-dim); text-align: center; }
+
+/* Siempre dos columnas; el relleno deja ver el contorno de foco dentro de la zona que se desplaza. */
+.rejilla {
+  flex: 1 1 auto; min-height: 140px; overflow-y: auto; overscroll-behavior: contain;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: max-content; gap: 10px; align-content: start;
+  /* max-content: con alto limitado, las filas no se encogen; la lista se desplaza. */
+  padding: 5px; margin: -5px; scroll-padding: 5px; scrollbar-gutter: stable;
+}
 
 .opcion {
-  position: relative; display: block; width: 100%; padding: 0; overflow: hidden;
-  border-radius: 12px; border: 3px solid transparent; background: var(--bg);
-  aspect-ratio: 1 / 1; transition: border-color .12s, transform .12s;
+  position: relative; display: block; width: 100%; min-height: 44px; padding: 0; overflow: hidden;
+  border-radius: 12px; border: 3px solid transparent; background: #2a2b31;
+  transition: border-color .12s, transform .12s;
 }
-.pantalla-seleccion[data-forma="miniatura"] .opcion { aspect-ratio: 9 / 16; }
-.opcion img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; user-select: none; }
-.opcion-sin-imagen { display: block; width: 100%; height: 100%; background: #3a3b41; pointer-events: none; }
+/* La proporción la da el contenido (no el botón): así cada fila de la lista mide lo que su tarjeta. */
+.opcion img, .opcion-sin-imagen { display: block; width: 100%; height: auto; aspect-ratio: 3 / 4; pointer-events: none; }
+.pantalla-seleccion[data-forma="miniatura"] .opcion img,
+.pantalla-seleccion[data-forma="miniatura"] .opcion-sin-imagen { aspect-ratio: 9 / 16; }
+/* Imagen completa, sin recortar: contain sobre el fondo neutro del botón. */
+.opcion img { object-fit: contain; user-select: none; }
+.opcion-sin-imagen { background: #3a3b41; }
 .opcion[aria-pressed="true"] .opcion-sin-imagen { opacity: .82; }
 .opcion:hover { border-color: var(--surface-hover); }
 .opcion[aria-pressed="true"] { border-color: var(--accent); }
@@ -340,15 +359,21 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .opcion:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
 .opcion:disabled { cursor: default; }
 .opcion-marca {
-  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%;
+  position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%;
   display: grid; place-items: center; background: rgba(15, 16, 19, .7); border: 2px solid #fff; color: transparent;
 }
-.opcion-marca svg { width: 18px; height: 18px; stroke-width: 3; }
+.opcion-marca svg { width: 16px; height: 16px; stroke-width: 3; }
 .opcion[aria-pressed="true"] .opcion-marca { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.seleccion-pie {
+  flex: none; display: flex; flex-wrap: wrap; gap: 10px;
+  padding-top: 12px; border-top: 1px solid var(--surface-hover);
+}
+.seleccion-pie .pantalla-error { flex: 1 1 100%; }
+.opcion-ninguno, .seleccion-pie .pantalla-boton { flex: 1 1 140px; min-height: 48px; }
 .opcion-ninguno {
-  display: flex; align-items: center; justify-content: center; gap: 10px; align-self: center;
-  min-height: 48px; min-width: min(240px, 100%); padding: 10px 20px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px 16px; border-radius: 10px;
   border: 2px solid var(--surface-hover); font-size: 16px; font-weight: 600;
 }
 .opcion-ninguno:hover { background: var(--surface-hover); }
@@ -361,11 +386,16 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 .opcion-ninguno-casilla svg { width: 16px; height: 16px; stroke-width: 3; }
 .opcion-ninguno[aria-pressed="true"] .opcion-ninguno-casilla { background: var(--accent); border-color: var(--accent); color: #fff; }
-.seleccion-tarjeta .pantalla-boton { align-self: center; min-width: min(240px, 100%); }
-@media (max-width: 600px) {
-  .seleccion-tarjeta { padding: 22px 14px; }
-  .rejilla { gap: 10px; }
-  .seleccion-tarjeta .pantalla-boton, .opcion-ninguno { align-self: stretch; }
+
+/* Poco alto (teléfono acostado, zoom alto): sin logo y todo más compacto para dejarle sitio a la lista. */
+@media (max-height: 620px) {
+  .seleccion-cabecera .pantalla-logo { display: none; }
+  .seleccion-tarjeta { gap: 10px; padding-top: 14px; padding-bottom: 12px; max-height: max(85vh, 300px); max-height: max(85dvh, 300px); }
+  .seleccion-cabecera { gap: 4px; }
+  .seleccion-titulo { font-size: 18px; }
+  .seleccion-subtitulo { font-size: 14px; }
+  .seleccion-pie { padding-top: 10px; }
+  .rejilla { min-height: 120px; }
 }
 @media (prefers-reduced-motion: reduce) { .opcion { transition: none; } }
 

@@ -58,6 +58,7 @@ export class ClienteRest {
     const r = await fetch(this.#rest(tabla, filtros), {
       method: "PATCH", headers: { ...this.#cabeceras, Prefer: "return=representation" }, body: JSON.stringify(cambios),
     });
+    if (r.status === 409) throw new ErrorConflicto(`conflicto_actualizacion_${tabla}`); // p. ej., índice único
     if (!r.ok) throw new ErrorControlado(`actualizacion_${tabla}_${r.status}`);
     const datos = await r.json();
     if (!Array.isArray(datos)) throw new ErrorControlado(`respuesta_${tabla}`);

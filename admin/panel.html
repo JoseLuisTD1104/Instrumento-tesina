@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261121-1">
+<link rel="stylesheet" href="css/panel.css?v=20261121-2">
 </head>
 <body class="verificando">
 
@@ -135,10 +135,10 @@
         <div class="campo campo-imagen">
           <span class="etiqueta">Cara</span>
           <div class="imagen-fila">
-            <div class="miniatura redonda"><img id="actor-cara-vista" alt="Vista previa de la cara" hidden></div>
+            <div class="miniatura cara-3x4"><img id="actor-cara-vista" alt="Vista previa del recorte de la cara" hidden></div>
             <label class="btn-sec btn-archivo">Elegir imagen<input class="visually-hidden" type="file" id="actor-cara" accept="image/png,image/jpeg,image/webp" aria-label="Elegir la imagen de la cara"></label>
           </div>
-          <p class="ayuda">JPEG, PNG o WebP. Se reduce a 480 px y se convierte a JPEG antes de subirla.</p>
+          <p class="ayuda">JPEG, PNG o WebP. Al elegirla la recortas en 3:4; se sube solo el recorte (360 × 480 px, JPEG).</p>
         </div>
       </div>
       <p class="mensaje" id="actor-mensaje" role="status" hidden></p>
@@ -305,6 +305,21 @@
     <div class="acciones">
       <button class="btn-sec" value="cancelar">Cancelar</button>
       <button class="btn-pri" value="aceptar" data-aceptar>Aceptar</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogo-recorte" class="dialogo-recorte" aria-labelledby="dialogo-recorte-titulo" aria-describedby="dialogo-recorte-ayuda">
+  <form method="dialog">
+    <h2 id="dialogo-recorte-titulo">Recortar la cara</h2>
+    <p class="ayuda" id="dialogo-recorte-ayuda">Arrastra la imagen para moverla y ajusta el zoom. Con teclado: flechas para mover, + y − para el zoom.</p>
+    <div class="recorte-marco">
+      <canvas data-recorte-lienzo tabindex="0" role="img" aria-label="Recorte de la cara. Flechas para mover, + y − para el zoom."></canvas>
+    </div>
+    <label class="recorte-zoom"><span>Zoom</span><input type="range" data-recorte-zoom><output data-recorte-zoom-valor>1×</output></label>
+    <div class="acciones">
+      <button class="btn-sec" value="cancelar">Cancelar</button>
+      <button class="btn-pri" value="usar">Usar recorte</button>
     </div>
   </form>
 </dialog>
@@ -501,7 +516,7 @@
     <img class="actor-cara" data-cara>
     <div class="actor-textos">
       <p class="actor-alias" data-alias></p>
-      <p class="archivo" data-videos></p>
+      <p class="archivo" data-asignacion></p>
     </div>
     <div class="actor-acciones">
       <label class="btn-sec btn-archivo">Cambiar cara<input class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-cambiar-cara></label>
@@ -569,11 +584,11 @@
 <script src="js/sesion-segura.js?v=20261120-2"></script>
 <script src="js/videos.js?v=20261121-1"></script>
 <script src="js/formulario-video.js?v=20261120-2"></script>
-<script src="js/reconocimiento.js?v=20261121-1"></script>
+<script src="js/reconocimiento.js?v=20261121-2"></script>
 <script src="js/pestanas-videos.js?v=20261121-1"></script>
 <script src="js/pestana-comentarios.js?v=20261120-2"></script>
 <script src="js/pestana-autenticacion.js?v=20261120-2"></script>
 <script src="js/sesiones-activas.js?v=20261120-2"></script>
-<script src="js/panel.js?v=20261121-1"></script>
+<script src="js/panel.js?v=20261121-2"></script>
 </body>
 </html>

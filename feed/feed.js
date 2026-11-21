@@ -1805,6 +1805,7 @@ class PantallaDeSeleccion {
     this.#pintar();
     this.#seccion.hidden = false;
     this.#seccion.scrollTop = 0;
+    this.#rejilla.scrollTop = 0;
     this.#titulo.focus();
   }
 
