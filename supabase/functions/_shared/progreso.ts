@@ -58,13 +58,9 @@ export class RegistroDeProgreso {
     this.#servicio = servicio;
   }
 
-  /**
-   * Ids de los videos publicados, mezclados en el servidor. null si algún video publicado no tiene actor o
-   * miniatura (las etapas siguientes los necesitan). Lanza si no hay ninguno o pasan del máximo.
-   */
-  async ordenAleatorio(): Promise<string[] | null> {
-    const filas = await this.#servicio.consultar("videos", { select: "id,actor_id,miniatura_ruta", publicado: "eq.true", order: "id.asc" });
-    if (filas.some((f) => f.actor_id == null || f.miniatura_ruta == null)) return null;
+  /** Ids de los videos publicados, mezclados en el servidor. Lanza si no hay ninguno o pasan del máximo. */
+  async ordenAleatorio(): Promise<string[]> {
+    const filas = await this.#servicio.consultar("videos", { select: "id", publicado: "eq.true", order: "id.asc" });
     const ids = filas.map((f) => f.id);
     if (!ids.every((id): id is string => typeof id === "string" && PATRON_UUID.test(id))) throw new ErrorControlado("videos_ids_ilegibles");
     if (ids.length < 1 || ids.length > RegistroDeProgreso.MAX_VIDEOS) throw new ErrorControlado("videos_publicados_fuera_de_rango");

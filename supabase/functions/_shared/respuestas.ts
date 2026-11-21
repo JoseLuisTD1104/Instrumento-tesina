@@ -50,8 +50,12 @@ export class RegistroDeRespuestas {
     this.#servicio = servicio;
   }
 
-  /** Una fila por actor (conoce true o false), en una sola inserción. Lanza ErrorConflicto si ya había. */
+  /**
+   * Una fila por actor (conoce true o false), en una sola inserción. Lanza ErrorConflicto si ya había.
+   * Sin actores (ningún video del participante tiene uno) no hay nada que guardar.
+   */
   async insertarConoce(codigo: string, actores: string[], marcados: string[], ahoraMs: number): Promise<void> {
+    if (!actores.length) return;
     const si = new Set(marcados);
     const creado = new Date(ahoraMs).toISOString();
     await this.#servicio.insertar("respuestas_conoce",

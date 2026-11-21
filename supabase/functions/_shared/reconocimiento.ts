@@ -220,8 +220,7 @@ export class OrdenEstable {
   }
 }
 
-/** Actores distintos entre los videos (en el orden en que aparecen). Lanza si alguno no tiene actor. */
+/** Actores distintos entre los videos (en el orden en que aparecen). Los videos sin actor se ignoran. */
 export function actoresDe(videos: VideoDeReconocimiento[]): string[] {
-  if (videos.some((v) => !v.actor_id)) throw new ErrorControlado("video_sin_actor");
-  return [...new Set(videos.map((v) => v.actor_id as string))];
+  return [...new Set(videos.map((v) => v.actor_id).filter((id): id is string => id !== null))];
 }

@@ -203,7 +203,8 @@ class FeedRepositorio {
 
   /**
    * Contenido de la etapa actual según "contenido-etapa": { etapa, elementos: [{ id, url }] } en "conoce",
-   * "convencio" y "memoria"; { etapa, segundos } en "revelacion"; { etapa } en las demás. Lanza si el
+   * "convencio" y "memoria"; { etapa, segundos } en "revelacion"; { etapa } en las demás. url es null en un
+   * video sin miniatura; en "conoce" la lista puede ir vacía (ningún video tiene actor). Lanza si el
    * formato no es el esperado o alguna URL no es una firma del bucket "reconocimiento".
    */
   async contenidoEtapa() {
@@ -211,15 +212,20 @@ class FeedRepositorio {
     const etapa = datos?.etapa;
     if (typeof etapa !== "string") throw new Error("etapa");
     const prefijo = `${this.#funciones.origen}/storage/v1/object/sign/reconocimiento/`;
-    const elementos = (lista, campo) => {
-      if (!Array.isArray(lista) || lista.length < 1 || lista.length > FeedRepositorio.MAX_ELEMENTOS) throw new Error("elementos");
+    const elementos = (lista, campo, { minimo, sinUrl }) => {
+      if (!Array.isArray(lista) || lista.length < minimo || lista.length > FeedRepositorio.MAX_ELEMENTOS) throw new Error("elementos");
       return lista.map((e) => {
-        if (!FeedRepositorio.PATRON_ID.test(e?.id ?? "") || typeof e[campo] !== "string" || !e[campo].startsWith(prefijo)) throw new Error("elemento");
-        return { id: e.id, url: e[campo] };
+        if (!FeedRepositorio.PATRON_ID.test(e?.id ?? "")) throw new Error("elemento");
+        const url = e[campo];
+        if (url === null && sinUrl) return { id: e.id, url: null };
+        if (typeof url !== "string" || !url.startsWith(prefijo)) throw new Error("elemento");
+        return { id: e.id, url };
       });
     };
-    if (etapa === "conoce") return { etapa, elementos: elementos(datos.actores, "cara_url") };
-    if (etapa === "convencio" || etapa === "memoria") return { etapa, elementos: elementos(datos.videos, "miniatura_url") };
+    if (etapa === "conoce") return { etapa, elementos: elementos(datos.actores, "cara_url", { minimo: 0, sinUrl: false }) };
+    if (etapa === "convencio" || etapa === "memoria") {
+      return { etapa, elementos: elementos(datos.videos, "miniatura_url", { minimo: 1, sinUrl: true }) };
+    }
     if (etapa === "revelacion") {
       if (!Number.isInteger(datos.segundos_transcurridos) || datos.segundos_transcurridos < 0) throw new Error("segundos");
       return { etapa, segundos: datos.segundos_transcurridos };
@@ -1732,7 +1738,8 @@ class PantallaDeMensaje {
 
 /**
  * Pasos 5, 6 y 8: una cuadrícula de caras o miniaturas (cada una un botón con aria-pressed) y la opción
- * "Ninguna"/"Ninguno". Elegir un elemento quita "Ninguno" y elegir "Ninguno" quita los elementos. "Aceptar"
+ * "Ninguna"/"Ninguno". Un elemento sin imagen se muestra como un cuadro gris neutro, igual de seleccionable;
+ * sin elementos (p. ej., ningún video con actor) solo queda "Ninguna". Elegir un elemento quita "Ninguno" y elegir "Ninguno" quita los elementos. "Aceptar"
  * se activa con al menos un elemento o "Ninguno". La selección vive solo en memoria: al aceptar se manda
  * { etapa, marcados, ninguno } con los ids que dio el servidor. Ningún texto menciona cuántos hay.
  */
@@ -1793,6 +1800,7 @@ class PantallaDeSeleccion {
     this.#textoNinguno.textContent = textos.ninguno;
     this.#botonNinguno.setAttribute("aria-label", textos.ninguno);
     this.#rejilla.replaceChildren(...this.#botones.values());
+    this.#rejilla.hidden = this.#botones.size === 0;
     this.mostrarError("");
     this.#pintar();
     this.#seccion.hidden = false;
@@ -1826,12 +1834,7 @@ class PantallaDeSeleccion {
     boton.className = "opcion";
     boton.setAttribute("aria-label", nombre);
     boton.setAttribute("aria-pressed", "false");
-    const imagen = document.createElement("img");
-    imagen.alt = nombre;
-    imagen.draggable = false;
-    imagen.decoding = "async";
-    imagen.referrerPolicy = "no-referrer";
-    imagen.src = url;
+    const imagen = url ? PantallaDeSeleccion.#imagen(url, nombre) : PantallaDeSeleccion.#cuadroGris(nombre);
     const marca = document.createElement("span");
     marca.className = "opcion-marca";
     marca.setAttribute("aria-hidden", "true");
@@ -1839,6 +1842,25 @@ class PantallaDeSeleccion {
     boton.append(imagen, marca);
     boton.addEventListener("click", () => this.#alternar(id));
     return boton;
+  }
+
+  static #imagen(url, nombre) {
+    const imagen = document.createElement("img");
+    imagen.alt = nombre;
+    imagen.draggable = false;
+    imagen.decoding = "async";
+    imagen.referrerPolicy = "no-referrer";
+    imagen.src = url;
+    return imagen;
+  }
+
+  /** En lugar de una miniatura que no existe: cuadro gris con el mismo texto alternativo. */
+  static #cuadroGris(nombre) {
+    const cuadro = document.createElement("span");
+    cuadro.className = "opcion-sin-imagen";
+    cuadro.setAttribute("role", "img");
+    cuadro.setAttribute("aria-label", nombre);
+    return cuadro;
   }
 
   static #palomita() {

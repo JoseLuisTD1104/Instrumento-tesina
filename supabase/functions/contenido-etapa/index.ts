@@ -2,13 +2,14 @@
 // igual que feed-videos (401 pase_invalido; 403 falta_registro). Según la etapa del participante devuelve:
 // - "conoce": { etapa, actores: [{ id, cara_url }] }, una fila por actor distinto entre los videos de su
 //   orden_ciego, en un orden pseudoaleatorio estable por participante (SHA-256 de código + id de actor).
-// - "convencio" y "memoria": { etapa, videos: [{ id, miniatura_url }] } en el orden de su orden_ciego.
+//   Los videos sin actor se ignoran; si ninguno tiene, actores va vacía.
+// - "convencio" y "memoria": { etapa, videos: [{ id, miniatura_url }] } en el orden de su orden_ciego;
+//   un video sin miniatura va con miniatura_url null.
 // - "revelacion": { etapa, segundos_transcurridos } desde que entró a la etapa (actualizado_en).
 // - Cualquier otra etapa: { etapa }.
 // Las URLs son firmadas de 10 minutos del bucket privado "reconocimiento". Nunca devuelve el código, el
-// número de video, el origen de los videos ni nada que revele cuáles son de IA. Si falta material (un video
-// sin actor o sin miniatura), falla cerrada con la respuesta genérica de servicio.
-import { Entorno, ErrorControlado, type LectorEntorno } from "../_shared/entorno.ts";
+// número de video, el origen de los videos ni nada que revele cuáles son de IA.
+import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { ParticipanteActual } from "../_shared/participante-actual.ts";
 import { type Progreso } from "../_shared/progreso.ts";
@@ -49,11 +50,11 @@ class ContenidoDeEtapa {
     return actores.map((a) => ({ id: a.id, cara_url: urls.get(a.cara_ruta)! }));
   }
 
-  async #miniaturas(orden: string[]): Promise<{ id: string; miniatura_url: string }[]> {
+  async #miniaturas(orden: string[]): Promise<{ id: string; miniatura_url: string | null }[]> {
     const videos = await this.#videos.enOrden(orden);
-    if (videos.some((v) => !v.miniatura_ruta)) throw new ErrorControlado("video_sin_miniatura");
-    const urls = await this.#almacen.firmar("miniaturas", videos.map((v) => v.miniatura_ruta as string));
-    return videos.map((v) => ({ id: v.id, miniatura_url: urls.get(v.miniatura_ruta as string)! }));
+    const rutas = videos.map((v) => v.miniatura_ruta).filter((r): r is string => r !== null);
+    const urls = await this.#almacen.firmar("miniaturas", rutas);
+    return videos.map((v) => ({ id: v.id, miniatura_url: v.miniatura_ruta ? urls.get(v.miniatura_ruta)! : null }));
   }
 }
 

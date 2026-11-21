@@ -332,6 +332,8 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 }
 .pantalla-seleccion[data-forma="miniatura"] .opcion { aspect-ratio: 9 / 16; }
 .opcion img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; user-select: none; }
+.opcion-sin-imagen { display: block; width: 100%; height: 100%; background: #3a3b41; pointer-events: none; }
+.opcion[aria-pressed="true"] .opcion-sin-imagen { opacity: .82; }
 .opcion:hover { border-color: var(--surface-hover); }
 .opcion[aria-pressed="true"] { border-color: var(--accent); }
 .opcion[aria-pressed="true"] img { opacity: .82; }
