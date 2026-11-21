@@ -1,16 +1,18 @@
 // Respuestas de las etapas posteriores a la fase a ciegas: reconocimiento de actores
 // (public.respuestas_conoce), "¿harías lo que te pide?" y "¿cuáles eran deepfake?" (public.respuestas_video).
+// La exposición previa a deepfakes se guarda en public.perfil_participante (ver perfil.ts).
 // Siempre con ids fijos (actor o video), nunca con lo que muestre la pantalla; el código anónimo lo pone el
 // servidor. Solo la clave de servicio accede a las tablas. Ningún código ni id va a los logs.
 import { type Etapa, PATRON_UUID } from "./progreso.ts";
 import { ClienteRest } from "./supabase.ts";
 
 export type Pregunta = "haria" | "deepfake";
-export type Respuesta = { etapa: Etapa; marcados: string[]; ninguno: boolean };
+/** si: solo en "exposicion" (¿había visto o escuchado deepfakes?); null en las demás etapas. */
+export type Respuesta = { etapa: Etapa; marcados: string[]; ninguno: boolean; si: boolean | null };
 
 /** Etapas que se contestan con una selección, y la que sigue a cada una. */
 export const SIGUIENTE_ETAPA: Partial<Record<Etapa, Etapa>> = {
-  conoce: "convencio", convencio: "revelacion", revelacion: "memoria", memoria: "evaluacion",
+  conoce: "convencio", convencio: "revelacion", revelacion: "memoria", memoria: "evaluacion", exposicion: "resultado",
 };
 export const PREGUNTA_DE_ETAPA: Partial<Record<Etapa, Pregunta>> = { convencio: "haria", memoria: "deepfake" };
 
@@ -25,7 +27,12 @@ export class ValidadorDeRespuesta {
     if (c.etapa !== etapaActual || !(etapaActual in SIGUIENTE_ETAPA)) return null;
     const claves = Object.keys(c);
     // La revelación solo confirma: exactamente { etapa }.
-    if (etapaActual === "revelacion") return claves.length === 1 ? { etapa: etapaActual, marcados: [], ninguno: false } : null;
+    if (etapaActual === "revelacion") return claves.length === 1 ? { etapa: etapaActual, marcados: [], ninguno: false, si: null } : null;
+    // La exposición previa: exactamente { etapa, si: boolean }.
+    if (etapaActual === "exposicion") {
+      if (claves.length !== 2 || !claves.includes("si") || typeof c.si !== "boolean") return null;
+      return { etapa: etapaActual, marcados: [], ninguno: false, si: c.si };
+    }
     if (claves.length !== 3 || !["etapa", "marcados", "ninguno"].every((k) => claves.includes(k))) return null;
     const { marcados, ninguno } = c;
     if (!Array.isArray(marcados) || marcados.length > ValidadorDeRespuesta.MAX_MARCADOS || typeof ninguno !== "boolean") return null;
@@ -33,7 +40,7 @@ export class ValidadorDeRespuesta {
     const normalizados = (marcados as string[]).map((id) => id.toLowerCase());
     if (new Set(normalizados).size !== normalizados.length) return null;
     if (ninguno !== (normalizados.length === 0)) return null; // vacío ⇔ "Ninguno"
-    return { etapa: etapaActual, marcados: normalizados, ninguno };
+    return { etapa: etapaActual, marcados: normalizados, ninguno, si: null };
   }
 
   /** true si todos los marcados están entre los permitidos. */

@@ -71,6 +71,15 @@ class ClienteReconocimiento {
   }
 
   asignarActor(videoId, actorId) { return this.#invocar("asignar_actor", { video_id: videoId, actor_id: actorId }); }
+
+  /** Map(video_id → { origen, tipo }) de los videos ya clasificados. */
+  async listarClasificacion() {
+    const datos = await this.#invocar("listar_clasificacion");
+    if (!Array.isArray(datos?.clasificacion)) throw new ErrorPanel("No se pudo leer la clasificación de los videos.");
+    return new Map(datos.clasificacion.map((c) => [c.video_id, { origen: c.origen, tipo: c.tipo }]));
+  }
+
+  fijarClasificacion(videoId, origen, tipo) { return this.#invocar("fijar_clasificacion", { video_id: videoId, origen, tipo }); }
 }
 
 /**
@@ -292,10 +301,12 @@ class RecortadorDeCara {
 /**
  * Controles de reconocimiento de cada fila de "Administrar videos": número permanente ("N.º 7"), selector de
  * actor, subida de miniatura con vista previa y la advertencia "Falta actor o miniatura" en los publicados.
+ * También conecta el origen y el tipo de cada video (ControlesDeClasificacion).
  */
 class ControlesDeReconocimiento {
   #cliente;
   #preparador;
+  #clasificacion;
   #actores = [];
   #miniaturas = new Map();
   #vistasLocales = new Set();
@@ -305,6 +316,7 @@ class ControlesDeReconocimiento {
   constructor(cliente, preparador) {
     this.#cliente = cliente;
     this.#preparador = preparador;
+    this.#clasificacion = new ControlesDeClasificacion(cliente);
   }
 
   /** Avisa cuando cambia la asignación de actores (para actualizar la pestaña Actores). */
@@ -314,7 +326,9 @@ class ControlesDeReconocimiento {
     for (const vista of this.#vistasLocales) this.#preparador.liberar(vista);
     this.#vistasLocales.clear();
     this.#selectores.clear();
-    const [actores, miniaturas] = await Promise.all([this.#cliente.listarActores(), this.#cliente.listarMiniaturas()]);
+    const [actores, miniaturas] = await Promise.all([
+      this.#cliente.listarActores(), this.#cliente.listarMiniaturas(), this.#clasificacion.cargar(),
+    ]);
     this.#actores = actores;
     this.#miniaturas = miniaturas;
   }
@@ -331,6 +345,7 @@ class ControlesDeReconocimiento {
     const estado = fila.querySelector("[data-estado-rec]");
     const etiqueta = `«${video.titulo}»`;
     selector.setAttribute("aria-label", `Actor de ${etiqueta}`);
+    this.#clasificacion.conectar(fila, video);
     archivo.setAttribute("aria-label", `Subir miniatura de ${etiqueta}`);
 
     const actual = { actor_id: video.actor_id ?? null, miniatura_ruta: video.miniatura_ruta ?? null };

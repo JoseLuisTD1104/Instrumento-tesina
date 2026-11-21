@@ -1,5 +1,6 @@
 // Progreso del participante en la prueba (tabla public.progreso_participante). La etapa, el orden de la
-// fase a ciegas y la posición viven solo aquí: el navegador nunca recibe el orden completo ni lo guarda.
+// fase a ciegas, el de la evaluación y sus posiciones viven solo aquí: el navegador nunca recibe un orden
+// completo ni lo guarda.
 // Solo la clave de servicio accede a la tabla. Ningún código ni id de video va a los logs.
 import { ErrorControlado } from "./entorno.ts";
 import { ClienteRest } from "./supabase.ts";
@@ -13,8 +14,15 @@ export type Etapa = typeof ETAPAS[number];
 
 export const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** actualizadoEnMs: cuándo cambió por última vez (en la práctica, cuándo entró a la etapa actual). */
-export type Progreso = { etapa: Etapa; orden: string[]; posicion: number; actualizadoEnMs: number };
+/**
+ * orden/posicion: fase a ciegas. ordenEvaluacion: los mismos ids en otro orden (null hasta entrar a la
+ * evaluación) y posicionEvaluacion. actualizadoEnMs: cuándo cambió por última vez (en la práctica, cuándo
+ * entró a la etapa actual).
+ */
+export type Progreso = {
+  etapa: Etapa; orden: string[]; posicion: number;
+  ordenEvaluacion: string[] | null; posicionEvaluacion: number; actualizadoEnMs: number;
+};
 
 /** Fisher-Yates con crypto.getRandomValues. Cada índice se elige por rechazo: sin sesgo de módulo. */
 export class MezcladorSinSesgo {
@@ -33,24 +41,64 @@ export class MezcladorSinSesgo {
     }
     return r;
   }
+
+  /** Mezcla hasta que el orden sea distinto del original (con 2 o más elementos; con 1 no hay otro orden). */
+  static mezclarDistinto<T>(lista: readonly T[]): T[] {
+    if (lista.length < 2) return [...lista];
+    let r: T[];
+    do r = MezcladorSinSesgo.mezclar(lista); while (r.every((v, i) => v === lista[i]));
+    return r;
+  }
 }
 
-/** Qué videos de la fase a ciegas puede ver el participante: el actual y el siguiente, nunca otros. */
-export class FaseCiega {
+type Recorrido = { orden: string[]; posicion: number };
+
+/**
+ * Una fase de videos de un solo sentido (a ciegas o evaluación). Qué videos puede ver el participante:
+ * el actual y el siguiente de esa fase, nunca otros.
+ */
+export class FaseDeVideos {
   static VISIBLES = 2;
+  static CIEGA = new FaseDeVideos("ciega", (p) => ({ orden: p.orden, posicion: p.posicion }));
+  static EVALUACION = new FaseDeVideos("evaluacion", (p) => ({ orden: p.ordenEvaluacion ?? [], posicion: p.posicionEvaluacion }));
 
-  static actual(p: Progreso): string | null {
-    return p.etapa === "ciega" ? p.orden[p.posicion] ?? null : null;
+  readonly etapa: Etapa;
+  #recorrido: (p: Progreso) => Recorrido;
+
+  constructor(etapa: Etapa, recorrido: (p: Progreso) => Recorrido) {
+    this.etapa = etapa;
+    this.#recorrido = recorrido;
   }
 
-  static visibles(p: Progreso): string[] {
-    return p.etapa === "ciega" ? p.orden.slice(p.posicion, p.posicion + FaseCiega.VISIBLES) : [];
+  /** La fase de la etapa actual, o null si la etapa no es de videos. */
+  static de(p: Progreso): FaseDeVideos | null {
+    return [FaseDeVideos.CIEGA, FaseDeVideos.EVALUACION].find((f) => f.etapa === p.etapa) ?? null;
+  }
+
+  actual(p: Progreso): string | null {
+    if (p.etapa !== this.etapa) return null;
+    const { orden, posicion } = this.#recorrido(p);
+    return orden[posicion] ?? null;
+  }
+
+  visibles(p: Progreso): string[] {
+    if (p.etapa !== this.etapa) return [];
+    const { orden, posicion } = this.#recorrido(p);
+    return orden.slice(posicion, posicion + FaseDeVideos.VISIBLES);
+  }
+
+  /** Posición y total de esta fase (lo único que se informa al participante). */
+  avance(p: Progreso): { posicion: number; total: number } {
+    const { orden, posicion } = this.#recorrido(p);
+    return { posicion, total: orden.length };
   }
 }
+
+export const FaseCiega = FaseDeVideos.CIEGA;
 
 export class RegistroDeProgreso {
   static MAX_VIDEOS = 50;
-  static COLUMNAS = "etapa,orden_ciego,posicion_ciega,actualizado_en";
+  static COLUMNAS = "etapa,orden_ciego,posicion_ciega,orden_evaluacion,posicion_evaluacion,actualizado_en";
 
   #servicio: ClienteRest;
 
@@ -96,31 +144,63 @@ export class RegistroDeProgreso {
     return filas.length === 1;
   }
 
+  /** Avanza la fase a ciegas en 1 (ver #avanzar); al llegar al final pasa a "conoce". */
+  async avanzarCiega(codigo: string, posicionAnterior: number, total: number, ahoraMs: number): Promise<Progreso | null> {
+    return await this.#avanzar(codigo, { etapa: "ciega", columna: "posicion_ciega", final: "conoce" }, posicionAnterior, total, ahoraMs);
+  }
+
+  /** Avanza la evaluación en 1 (ver #avanzar); al llegar al final pasa a "exposicion". */
+  async avanzarEvaluacion(codigo: string, posicionAnterior: number, total: number, ahoraMs: number): Promise<Progreso | null> {
+    return await this.#avanzar(codigo, { etapa: "evaluacion", columna: "posicion_evaluacion", final: "exposicion" }, posicionAnterior, total, ahoraMs);
+  }
+
   /**
-   * Avanza la posición de la fase a ciegas en 1, solo si sigue en `posicionAnterior` y en etapa "ciega":
-   * dos peticiones simultáneas no pueden avanzar dos veces. Al llegar al final pasa a "conoce".
+   * Avanza la posición de una fase en 1, solo si sigue en `posicionAnterior` y en la etapa de esa fase:
+   * dos peticiones simultáneas no pueden avanzar dos veces. Al llegar a `total` pasa a la etapa `final`.
    * Devuelve el progreso nuevo, o null si la condición ya no se cumplía.
    */
-  async avanzarCiega(codigo: string, posicionAnterior: number, total: number, ahoraMs: number): Promise<Progreso | null> {
+  async #avanzar(codigo: string, fase: { etapa: Etapa; columna: string; final: Etapa }, posicionAnterior: number,
+    total: number, ahoraMs: number): Promise<Progreso | null> {
     const siguiente = posicionAnterior + 1;
     const filas = await this.#servicio.actualizar(TABLA,
-      { codigo_participante: `eq.${codigo}`, etapa: "eq.ciega", posicion_ciega: `eq.${posicionAnterior}`, select: RegistroDeProgreso.COLUMNAS },
-      { posicion_ciega: siguiente, etapa: siguiente >= total ? "conoce" : "ciega", actualizado_en: new Date(ahoraMs).toISOString() });
+      { codigo_participante: `eq.${codigo}`, etapa: `eq.${fase.etapa}`, [fase.columna]: `eq.${posicionAnterior}`, select: RegistroDeProgreso.COLUMNAS },
+      { [fase.columna]: siguiente, etapa: siguiente >= total ? fase.final : fase.etapa, actualizado_en: new Date(ahoraMs).toISOString() });
     if (filas.length === 0) return null;
     if (filas.length !== 1) throw new ErrorControlado("progreso_duplicado");
     return RegistroDeProgreso.#interpretar(filas[0]);
   }
 
+  static #ids(lista: unknown): lista is string[] {
+    return Array.isArray(lista) && lista.length >= 1 && lista.length <= RegistroDeProgreso.MAX_VIDEOS &&
+      lista.every((id) => typeof id === "string" && PATRON_UUID.test(id));
+  }
+
+  static #posicion(valor: unknown, largo: number): valor is number {
+    return typeof valor === "number" && Number.isInteger(valor) && valor >= 0 && valor <= largo;
+  }
+
   static #interpretar(fila: Record<string, unknown>): Progreso {
-    const { etapa, orden_ciego: orden, posicion_ciega: posicion } = fila;
+    const { etapa, orden_ciego: orden, posicion_ciega: posicion, orden_evaluacion: ordenEval, posicion_evaluacion: posicionEval } = fila;
     const actualizadoEnMs = Date.parse(String(fila.actualizado_en ?? ""));
     if (!Number.isFinite(actualizadoEnMs)) throw new ErrorControlado("progreso_fecha_ilegible");
     if (typeof etapa !== "string" || !(ETAPAS as readonly string[]).includes(etapa)) throw new ErrorControlado("progreso_etapa_ilegible");
-    if (!Array.isArray(orden) || orden.length < 1 || orden.length > RegistroDeProgreso.MAX_VIDEOS ||
-        !orden.every((id) => typeof id === "string" && PATRON_UUID.test(id))) throw new ErrorControlado("progreso_orden_ilegible");
-    if (typeof posicion !== "number" || !Number.isInteger(posicion) || posicion < 0 || posicion > orden.length) {
-      throw new ErrorControlado("progreso_posicion_ilegible");
+    if (!RegistroDeProgreso.#ids(orden)) throw new ErrorControlado("progreso_orden_ilegible");
+    if (!RegistroDeProgreso.#posicion(posicion, orden.length)) throw new ErrorControlado("progreso_posicion_ilegible");
+    // El orden de la evaluación, si ya existe, tiene los mismos videos que el de la fase a ciegas.
+    const normalizar = (ids: string[]) => ids.map((id) => id.toLowerCase());
+    let ordenEvaluacion: string[] | null = null;
+    if (ordenEval != null) {
+      if (!RegistroDeProgreso.#ids(ordenEval)) throw new ErrorControlado("progreso_orden_evaluacion_ilegible");
+      ordenEvaluacion = normalizar(ordenEval);
+      const ciegos = new Set(normalizar(orden));
+      if (ordenEvaluacion.length !== ciegos.size || new Set(ordenEvaluacion).size !== ciegos.size || !ordenEvaluacion.every((id) => ciegos.has(id))) {
+        throw new ErrorControlado("progreso_orden_evaluacion_distinto");
+      }
     }
-    return { etapa: etapa as Etapa, orden: orden.map((id: string) => id.toLowerCase()), posicion, actualizadoEnMs };
+    if (!RegistroDeProgreso.#posicion(posicionEval, ordenEvaluacion?.length ?? 0)) throw new ErrorControlado("progreso_posicion_evaluacion_ilegible");
+    if (etapa === "evaluacion" && !ordenEvaluacion) throw new ErrorControlado("progreso_sin_orden_evaluacion");
+    return {
+      etapa: etapa as Etapa, orden: normalizar(orden), posicion, ordenEvaluacion, posicionEvaluacion: posicionEval, actualizadoEnMs,
+    };
   }
 }

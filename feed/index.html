@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261121-7">
+<link rel="stylesheet" href="feed.css?v=20261121-8">
 </head>
 <body>
 
@@ -145,11 +145,49 @@
   </div>
 </section>
 
-<!-- Pantalla provisional al terminar esta parte (se reemplaza en la siguiente entrega) -->
-<section class="pantalla" id="fin-parte" aria-labelledby="fin-parte-texto" hidden>
+<!-- Paso 9: evaluación. El video (solo pausa y silencio) y, debajo, la escala de 1 a 6 obligatoria -->
+<section class="pantalla-evaluacion" id="evaluacion" aria-labelledby="evaluacion-pregunta" hidden>
+  <div class="evaluacion-tarjeta">
+    <div class="evaluacion-video" id="evaluacion-video">
+      <p class="estado-feed" id="evaluacion-estado" role="status">Cargando video…</p>
+    </div>
+    <div class="evaluacion-panel" id="evaluacion-panel">
+      <h1 class="evaluacion-pregunta" id="evaluacion-pregunta" tabindex="-1">¿Qué tan seguro estás de que este video es real o generado por IA?</h1>
+      <div class="escala" id="evaluacion-escala" role="radiogroup" aria-labelledby="evaluacion-pregunta" aria-required="true"></div>
+      <button type="button" class="pantalla-boton evaluacion-boton" id="evaluacion-siguiente" aria-label="Siguiente" disabled>Siguiente</button>
+    </div>
+  </div>
+  <div class="feed-espera evaluacion-espera" id="evaluacion-espera" role="status" aria-label="Guardando tu respuesta" hidden><span class="giro"></span></div>
+</section>
+
+<!-- Paso 10: exposición previa a deepfakes -->
+<section class="pantalla pantalla-desplazable" id="exposicion" aria-labelledby="exposicion-pregunta" hidden>
   <div class="pantalla-tarjeta">
     <div class="logo pantalla-logo">corto<span>.</span></div>
-    <p class="pantalla-texto" id="fin-parte-texto" tabindex="-1">Fin de esta parte.</p>
+    <h1 class="pantalla-texto pantalla-pregunta" id="exposicion-pregunta" tabindex="-1">¿Consideras que antes de hoy habías visto o escuchado deepfakes?</h1>
+    <div class="exposicion-opciones" role="group" aria-labelledby="exposicion-pregunta">
+      <button type="button" class="opcion-binaria" id="exposicion-si" aria-label="Sí" aria-pressed="false">Sí</button>
+      <button type="button" class="opcion-binaria" id="exposicion-no" aria-label="No" aria-pressed="false">No</button>
+    </div>
+    <p class="pantalla-error" id="exposicion-error" role="alert" hidden></p>
+    <button type="button" class="pantalla-boton" id="exposicion-aceptar" aria-label="Aceptar" disabled>Aceptar</button>
+  </div>
+</section>
+
+<!-- Paso 11: resultado individual (pantalla final, sin botones) -->
+<section class="pantalla pantalla-desplazable" id="resultado" aria-labelledby="resultado-gracias" hidden>
+  <div class="pantalla-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <p class="pantalla-texto resultado-cifra" id="resultado-texto" tabindex="-1" hidden></p>
+    <p class="pantalla-texto" id="resultado-gracias" tabindex="-1">Gracias por participar. Avisa a la persona que aplica la prueba.</p>
+  </div>
+</section>
+
+<!-- Etapa "fin" -->
+<section class="pantalla pantalla-desplazable" id="fin" aria-labelledby="fin-texto" hidden>
+  <div class="pantalla-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <p class="pantalla-texto" id="fin-texto" tabindex="-1">Gracias por participar.</p>
   </div>
 </section>
 
@@ -296,6 +334,6 @@
 
 <script src="../admin/config.js?v=20261120-1"></script>
 <script src="aviso-privacidad.js?v=20261121-1"></script>
-<script src="feed.js?v=20261121-7"></script>
+<script src="feed.js?v=20261121-8"></script>
 </body>
 </html>

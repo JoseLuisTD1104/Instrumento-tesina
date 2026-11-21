@@ -1,12 +1,16 @@
 // Edge Function "responder-etapa" (pública con pase). Solo POST con JSON de máx. 4 KB y el pase, verificado
 // igual que feed-videos (401 / 403 falta_registro). Cuerpo { etapa, marcados: [uuid], ninguno: boolean }
-// (en "revelacion", solo { etapa }). Solo vale si etapa es la etapa actual del participante:
+// (en "revelacion", solo { etapa }; en "exposicion", { etapa, si }). Solo vale si etapa es la etapa actual del participante:
 // - "conoce": marcados ⊆ actores de sus videos; una fila por actor en respuestas_conoce → "convencio".
 // - "convencio": marcados ⊆ su orden_ciego; una fila por video en respuestas_video (pregunta "haria",
 //   posicion = lugar en orden_ciego desde 1) → "revelacion".
 // - "revelacion": solo si pasaron al menos 10 s desde que entró (actualizado_en); guarda
 //   revelacion_aceptada_en → "memoria".
-// - "memoria": igual que "convencio" con pregunta "deepfake" → "evaluacion".
+// - "memoria": igual que "convencio" con pregunta "deepfake" → "evaluacion". En la misma actualización
+//   guarda orden_evaluacion (los ids de orden_ciego mezclados con Fisher-Yates y crypto.getRandomValues,
+//   repetido hasta que difiera de orden_ciego si hay 2 o más) y posicion_evaluacion = 0.
+// - "exposicion": cuerpo { etapa, si: boolean }; guarda deepfakes_previos en perfil_participante (solo si
+//   seguía sin responder) → "resultado".
 // Sin duplicados; marcados vacío ⇔ ninguno true. Las filas se insertan en una sola sentencia (la clave
 // primaria impide una segunda inserción) y la etapa avanza con una actualización condicionada a la etapa
 // anterior; si no avanza, se borran las filas insertadas. Cualquier otra cosa: rechazo genérico.
@@ -14,7 +18,8 @@
 import { Entorno, ErrorConflicto, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { type Participante, ParticipanteActual } from "../_shared/participante-actual.ts";
-import { type Etapa, RegistroDeProgreso } from "../_shared/progreso.ts";
+import { type Etapa, MezcladorSinSesgo, RegistroDeProgreso } from "../_shared/progreso.ts";
+import { RegistroDePerfil } from "../_shared/perfil.ts";
 import { actoresDe, VideosDeReconocimiento } from "../_shared/reconocimiento.ts";
 import {
   PREGUNTA_DE_ETAPA, RegistroDeRespuestas, type Respuesta, SIGUIENTE_ETAPA, ValidadorDeRespuesta,
@@ -55,7 +60,17 @@ class ContestadorDeEtapa {
 
     let insertar: () => Promise<void>;
     let deshacer: () => Promise<void>;
-    if (desde === "conoce") {
+    let extra: Record<string, unknown> = {};
+    if (desde === "exposicion") {
+      const si = respuesta.si;
+      if (si === null) return null;
+      const perfil = new RegistroDePerfil(this.#servicio);
+      insertar = async () => {
+        // Ya respondida (p. ej., dos peticiones a la vez): se trata igual que una fila repetida.
+        if (!(await perfil.guardarDeepfakesPrevios(codigo, si))) throw new ErrorConflicto("deepfakes_previos_respondido");
+      };
+      deshacer = () => perfil.borrarDeepfakesPrevios(codigo);
+    } else if (desde === "conoce") {
       const actores = actoresDe(await new VideosDeReconocimiento(this.#servicio).enOrden(progreso.orden));
       if (!ValidadorDeRespuesta.pertenecen(respuesta.marcados, actores)) return null;
       insertar = () => this.#respuestas.insertarConoce(codigo, actores, respuesta.marcados, ahoraMs);
@@ -65,6 +80,9 @@ class ContestadorDeEtapa {
       if (!pregunta || !ValidadorDeRespuesta.pertenecen(respuesta.marcados, progreso.orden)) return null;
       insertar = () => this.#respuestas.insertarVideos(codigo, progreso.orden, respuesta.marcados, pregunta, ahoraMs);
       deshacer = () => this.#respuestas.borrarVideos(codigo, pregunta);
+      if (desde === "memoria") {
+        extra = { orden_evaluacion: MezcladorSinSesgo.mezclarDistinto(progreso.orden), posicion_evaluacion: 0 };
+      }
     }
 
     try {
@@ -75,7 +93,7 @@ class ContestadorDeEtapa {
     }
     let cambio: boolean;
     try {
-      cambio = await this.#progreso.cambiarEtapa(codigo, desde, hacia, ahoraMs);
+      cambio = await this.#progreso.cambiarEtapa(codigo, desde, hacia, ahoraMs, { extra });
     } catch (e) {
       // No se sabe si la actualización llegó a la base: se vuelve a leer antes de borrar nada.
       const actual = await this.#progreso.leer(codigo).catch(() => null);

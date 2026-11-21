@@ -54,6 +54,14 @@ export class ClienteRest {
     if (!r.ok) throw new ErrorControlado(`insercion_${tabla}_${r.status}`);
   }
 
+  /** Inserta o, si ya existe una fila con el mismo valor en `conflicto`, la actualiza (upsert de PostgREST). */
+  async insertarOActualizar(tabla: string, fila: Fila, conflicto: string): Promise<void> {
+    const r = await fetch(this.#rest(tabla, { on_conflict: conflicto }), {
+      method: "POST", headers: { ...this.#cabeceras, Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(fila),
+    });
+    if (!r.ok) throw new ErrorControlado(`upsert_${tabla}_${r.status}`);
+  }
+
   async actualizar(tabla: string, filtros: Record<string, string>, cambios: Fila): Promise<Fila[]> {
     const r = await fetch(this.#rest(tabla, filtros), {
       method: "PATCH", headers: { ...this.#cabeceras, Prefer: "return=representation" }, body: JSON.stringify(cambios),

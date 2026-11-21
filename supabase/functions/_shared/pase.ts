@@ -1,5 +1,8 @@
 // Pase de participante: JWT HS256 firmado con TOKEN_SECRETO usando Web Crypto (sin dependencias).
-// Claims: rol "participante", jti aleatorio, iat y exp (25 minutos).
+// Claims: rol "participante", jti aleatorio, iat y exp (45 minutos). La misma duración fija el vencimiento de la
+// sesión (sesiones_activas.expira_en), que la base limita a 1 hora.
+
+import { ErrorControlado } from "./entorno.ts";
 
 const codificador = new TextEncoder();
 
@@ -19,7 +22,10 @@ function deBase64Url(texto: string): Uint8Array {
 const jsonA64 = (objeto: unknown) => aBase64Url(codificador.encode(JSON.stringify(objeto)));
 
 export class PaseParticipante {
-  static DURACION_S = 25 * 60;
+  /** Única constante de duración: vence el pase y, con expiraEnMs, la sesión en sesiones_activas. */
+  static DURACION_S = 45 * 60;
+  /** Máximo que acepta la base para una sesión: si la duración lo pasara, no se emite ningún pase. */
+  static MAXIMO_BASE_S = 60 * 60;
   static ROL = "participante";
   static TOLERANCIA_RELOJ_S = 60;
 
@@ -33,6 +39,7 @@ export class PaseParticipante {
 
   /** Emite un pase con jti aleatorio criptográfico. Devuelve también el jti y el vencimiento (ms). */
   async emitir(ahoraMs = Date.now()): Promise<{ token: string; jti: string; expiraEnMs: number }> {
+    if (PaseParticipante.DURACION_S > PaseParticipante.MAXIMO_BASE_S) throw new ErrorControlado("duracion_pase_excede_base");
     const iat = Math.floor(ahoraMs / 1000);
     const exp = iat + PaseParticipante.DURACION_S;
     const jti = crypto.randomUUID();

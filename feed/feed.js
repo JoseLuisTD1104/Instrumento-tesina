@@ -2,7 +2,7 @@
 
 /**
  * Feed de "corto". Solo se entra con el código de acceso que se proyecta en el salón: la Edge
- * Function "validar-codigo" entrega un pase (JWT de 25 min) que se guarda en sessionStorage y se manda
+ * Function "validar-codigo" entrega un pase (JWT de 45 min) que se guarda en sessionStorage y se manda
  * en Authorization a las demás funciones. Después del código, el participante lee el aviso de privacidad
  * y da sus datos ("registrar-participante"); sin ese registro el servidor no entrega el feed (403).
  * Los datos personales solo viajan en esa petición: no se guardan en sessionStorage, localStorage ni
@@ -17,6 +17,10 @@
  * celular, deslizando hacia arriba. Después siguen el reconocimiento de actores, "¿harías lo que te pide?",
  * la revelación y "¿cuáles eran deepfake?": el contenido lo da "contenido-etapa" y cada respuesta va a
  * "responder-etapa" con ids fijos. Las selecciones viven solo en memoria hasta pulsar Aceptar.
+ * Luego, la evaluación: los mismos videos en otro orden (lo decide el servidor), uno a la vez, con la escala
+ * de 1 a 6 obligatoria; cada respuesta y su medición van a "registrar-evaluacion" y solo se avanza con el
+ * botón "Siguiente". Al final, la pregunta de exposición previa a deepfakes y el resultado individual, que
+ * calcula el servidor (solo aciertos y total). Ninguna respuesta se guarda en el navegador.
  */
 
 /** El servidor rechazó el pase (401): hay que volver a la pantalla de acceso. */
@@ -193,7 +197,7 @@ class FeedRepositorio {
     return { etapa: datos.etapa, posicion: datos.posicion, total: datos.total };
   }
 
-  /** { etapa, posicion, total, videos }: en la fase a ciegas, solo el video actual y el siguiente. */
+  /** { etapa, posicion, total, videos }: en la fase a ciegas y la evaluación, solo el video actual y el siguiente. */
   async estado() {
     const datos = await this.#funciones.llamar("feed-videos", { metodo: "GET", pase: this.#pase });
     const avance = FeedRepositorio.#avance(datos);
@@ -203,7 +207,8 @@ class FeedRepositorio {
 
   /**
    * Contenido de la etapa actual según "contenido-etapa": { etapa, elementos: [{ id, url }] } en "conoce",
-   * "convencio" y "memoria"; { etapa, segundos } en "revelacion"; { etapa } en las demás. url es null en un
+   * "convencio" y "memoria"; { etapa, segundos } en "revelacion"; { etapa, aciertos, total } en "resultado";
+   * { etapa } en las demás. url es null en un
    * video sin miniatura; en "conoce" la lista puede ir vacía (ningún video tiene actor). Lanza si el
    * formato no es el esperado o alguna URL no es una firma del bucket "reconocimiento".
    */
@@ -230,6 +235,11 @@ class FeedRepositorio {
       if (!Number.isInteger(datos.segundos_transcurridos) || datos.segundos_transcurridos < 0) throw new Error("segundos");
       return { etapa, segundos: datos.segundos_transcurridos };
     }
+    if (etapa === "resultado") {
+      const { aciertos, total } = datos;
+      if (!Number.isInteger(aciertos) || !Number.isInteger(total) || aciertos < 0 || aciertos > total) throw new Error("resultado");
+      return { etapa, aciertos, total };
+    }
     return { etapa };
   }
 
@@ -248,6 +258,11 @@ class FeedRepositorio {
   /** Medición del video actual; devuelve { etapa, posicion, total } ya avanzados por el servidor. */
   async registrarVisualizacion(cuerpo) {
     return FeedRepositorio.#avance(await this.#funciones.llamar("registrar-visualizacion", { cuerpo, pase: this.#pase }));
+  }
+
+  /** Respuesta y medición del video actual de la evaluación; devuelve { etapa, posicion, total } ya avanzados. */
+  async registrarEvaluacion(cuerpo) {
+    return FeedRepositorio.#avance(await this.#funciones.llamar("registrar-evaluacion", { cuerpo, pase: this.#pase }));
   }
 
   urlImagen(ruta) {
@@ -1183,6 +1198,11 @@ class VentanaSimulada {
  * Un video del feed: pide su URL firmada, la renueva al caducar, bloquea menús y descargas y mide su
  * visualización mientras es el actual.
  */
+/**
+ * Un video del feed. Con `soloVideo` (evaluación) queda solo el reproductor con pausa y silencio: sin datos
+ * de la cuenta, descripción, contadores, comentarios, guardar, compartir, "…", seguir ni enlace, y sin
+ * registrar interacciones (metricas null).
+ */
 class VideoDelFeed {
   static MARGEN_MS = 20_000; // se pide una URL nueva si a la actual le quedan menos de 20 s
 
@@ -1193,8 +1213,8 @@ class VideoDelFeed {
   #video;
   #player;
   #barra = null;
-  #comentarios;
-  #menu;
+  #comentarios = null;
+  #menu = null;
   #ventana = null;
   #aviso;
   #progreso;
@@ -1207,7 +1227,7 @@ class VideoDelFeed {
   #destruido = false;
   raiz;
 
-  constructor(repo, datos, feed, metricas) {
+  constructor(repo, datos, feed, metricas, { soloVideo = false } = {}) {
     this.#repo = repo;
     this.#datos = datos;
     this.#feed = feed;
@@ -1218,11 +1238,15 @@ class VideoDelFeed {
     this.#aviso = this.raiz.querySelector("[data-aviso]");
     this.#progreso = this.raiz.querySelector("[data-progreso]");
     this.#medidor = new MedidorDeVisualizacion(this.#video);
-    this.#pintarDatos();
-    this.#barra = BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"), () => this.#abrirEnlace());
+    if (soloVideo) {
+      for (const sobra of this.raiz.querySelectorAll(".overlay, .actions")) sobra.remove();
+    } else {
+      this.#pintarDatos();
+      this.#barra = BarraDeEnlace.crear(datos, this.#video, this.raiz.querySelector("[data-enlace]"), () => this.#abrirEnlace());
+    }
     this.#protegerVideo();
     this.#conectarControles();
-    this.#conectarInteracciones();
+    if (!soloVideo) this.#conectarInteracciones();
   }
 
   get id() { return this.#datos.id; }
@@ -1239,8 +1263,8 @@ class VideoDelFeed {
   desactivar() {
     this.#activo = false;
     this.#video.pause();
-    this.#comentarios.cerrar();
-    this.#menu.cerrar();
+    this.#comentarios?.cerrar();
+    this.#menu?.cerrar();
   }
 
   /** Se pasa al siguiente: cierra la medición, detiene el video y devuelve lo medido. */
@@ -1260,8 +1284,8 @@ class VideoDelFeed {
     this.#destruido = true;
     this.#medidor.terminar();
     this.#activo = false;
-    this.#comentarios.cerrar();
-    this.#menu.cerrar();
+    this.#comentarios?.cerrar();
+    this.#menu?.cerrar();
     this.#ventana?.descartar();
     this.#video.pause();
     this.#video.removeAttribute("src");
@@ -1414,7 +1438,7 @@ class VideoDelFeed {
   }
 
   #registrar(tipo, extra) {
-    if (this.#destruido) return;
+    if (this.#destruido || !this.#metricas) return;
     this.#metricas.registrar(this.#datos.id, tipo, this.#tiempoMs(), extra);
   }
 
@@ -1478,27 +1502,29 @@ class VideoDelFeed {
 }
 
 /**
- * Fase a ciegas: un video a la vez y solo hacia adelante. En el DOM solo están el video actual y el
- * siguiente (precargado y oculto); el anterior se destruye al confirmarse el paso. No hay forma de volver:
- * ni botón, ni flecha, ni gesto, ni teclado, ni rueda. Al pasar, la medición del actual se manda a
- * "registrar-visualizacion" y el siguiente se muestra cuando el servidor confirma; luego se pide a
- * "feed-videos" el que sigue. Si algo falla tras los reintentos, solo se muestra un mensaje genérico.
+ * Secuencia de videos de una fase de un solo sentido (a ciegas o evaluación): un video a la vez y solo hacia
+ * adelante. En el DOM solo están el video actual y el siguiente (precargado y oculto); el anterior se destruye
+ * al confirmarse el paso. No hay forma de volver. Al pasar, la medición del actual (y lo que agregue la fase)
+ * se manda a `registrar` y el siguiente se muestra cuando el servidor confirma; luego se pide a "feed-videos"
+ * el que sigue. Si algo falla tras los reintentos, solo se muestra un mensaje genérico.
+ * Las subclases conectan su forma de avanzar (conectar) y pueden reaccionar a cada video nuevo (alMostrar)
+ * y al fallo (alFallar).
  */
-class FeedACiegas {
+class SecuenciaDeVideos {
   static MENSAJE_FALLO = "Algo salió mal. Recarga la página.";
-  static UMBRAL_DESLIZAR_PX = 60;
-  static TECLA_SIGUIENTE = "ArrowDown";
-  static TECLAS_BLOQUEADAS = new Set(["ArrowUp", "PageUp", "PageDown", "Home", "End", " "]);
 
   #repo;
+  #etapa;
+  #registrar;
   #metricas;
+  #soloVideo;
+  #contenedor;
+  #estado;
+  #espera;
+  #boton;
   #alPerderPase;
   #alFaltarRegistro;
   #alTerminar;
-  #contenedor = document.getElementById("feed");
-  #estado = document.getElementById("feed-estado");
-  #espera = document.getElementById("feed-espera");
-  #botonSiguiente = document.getElementById("nav-siguiente");
   #actual = null;
   #siguiente = null;
   #cargaSiguiente = Promise.resolve();
@@ -1506,29 +1532,54 @@ class FeedACiegas {
   #terminado = false;
   #conSonido = false;
   #escuchas = new AbortController(); // permite quitar todos los escuchadores al vaciar
-  #toque = null;
 
-  constructor(repo, { alPerderPase, alFaltarRegistro, alTerminar }) {
+  /**
+   * fase: { etapa, registrar(cuerpo) → avance, metricas (EnviadorDeInteracciones o null), soloVideo,
+   * contenedor, estado, espera, boton }. avisos: { alPerderPase, alFaltarRegistro, alTerminar }.
+   */
+  constructor(repo, { etapa, registrar, metricas = null, soloVideo = false, contenedor, estado, espera, boton },
+    { alPerderPase, alFaltarRegistro, alTerminar }) {
     this.#repo = repo;
-    this.#metricas = new EnviadorDeInteracciones(repo);
+    this.#etapa = etapa;
+    this.#registrar = registrar;
+    this.#metricas = metricas;
+    this.#soloVideo = soloVideo;
+    this.#contenedor = contenedor;
+    this.#estado = estado;
+    this.#espera = espera;
+    this.#boton = boton;
     this.#alPerderPase = alPerderPase;
     this.#alFaltarRegistro = alFaltarRegistro;
     this.#alTerminar = alTerminar;
   }
 
-  /** `estado` viene de "feed-videos" en la etapa "ciega": videos = [actual, siguiente?]. */
+  /** Señal para los escuchadores de la subclase: se quitan todos al vaciar. */
+  get senal() { return this.#escuchas.signal; }
+
+  /** true mientras se espera la confirmación del servidor o si ya no se puede seguir. */
+  get ocupado() { return this.#avanzando || this.#terminado; }
+
+  /** `estado` viene de "feed-videos" en la etapa de esta fase: videos = [actual, siguiente?]. */
   iniciar(estado) {
     document.addEventListener("contextmenu", (e) => {
       if (e.target.closest?.(".player, video, img")) e.preventDefault();
-    }, { signal: this.#escuchas.signal });
+    }, { signal: this.senal });
     const [actual, siguiente] = estado.videos;
     if (!actual) { this.#fallar(); return; }
     this.#estado.remove();
     this.#actual = this.#crear(actual);
-    this.#mostrar(this.#actual, false);
+    this.#mostrar(this.#actual, false, estado);
     if (siguiente) this.#ponerSiguiente(this.#crear(siguiente));
-    this.#conectarNavegacion();
+    this.conectar();
   }
+
+  /** Forma de avanzar de la fase (botones, teclas, gestos). */
+  conectar() {}
+
+  /** Un video nuevo es el actual; avance: { posicion, total } según el servidor. */
+  alMostrar() { this.#boton.disabled = false; }
+
+  alFallar() {}
 
   /** El servidor rechazó el pase (vencido o alterado): se detiene todo y se vuelve al acceso. */
   perderPase() {
@@ -1539,7 +1590,7 @@ class FeedACiegas {
   /** Detiene envíos y escuchadores y destruye los videos (src y elementos). La página queda vacía. */
   vaciar() {
     this.#terminado = true;
-    this.#metricas.detener();
+    this.#metricas?.detener();
     this.#escuchas.abort();
     this.#quitarVideos();
     this.#estado.textContent = "Cargando videos…";
@@ -1547,7 +1598,7 @@ class FeedACiegas {
     this.#contenedor.replaceChildren(this.#estado);
     this.#contenedor.removeAttribute("aria-busy");
     this.#espera.hidden = true;
-    this.#botonSiguiente.disabled = true;
+    this.#boton.disabled = true;
   }
 
   alternarSonido() {
@@ -1560,26 +1611,67 @@ class FeedACiegas {
     this.#aplicarSonido();
   }
 
+  /**
+   * Cierra la medición del actual y la manda con `extra`; al confirmarse, muestra el siguiente. Si el
+   * servidor dice que la fase terminó, avisa con alTerminar.
+   */
+  async avanzar(extra = {}) {
+    if (this.#avanzando || this.#terminado || !this.#actual || !PilaDeCapas.vacia) return;
+    this.#avanzando = true;
+    this.#boton.disabled = true;
+    const actual = this.#actual;
+    const medicion = actual.terminar();
+    this.#espera.hidden = false;
+    this.#contenedor.setAttribute("aria-busy", "true");
+    try {
+      await this.#metricas?.esperarPendientes();
+      const avance = await Reintentos.ejecutar(
+        () => this.#registrar({ video_id: actual.id, ...medicion, ...extra }), () => !this.#terminado);
+      if (this.#terminado) return;
+      if (avance.etapa !== this.#etapa) { this.#terminado = true; this.#alTerminar(); return; }
+      await this.#cargaSiguiente;
+      const siguiente = this.#siguiente;
+      if (this.#terminado) return;
+      if (!siguiente) throw new Error("siguiente");
+      actual.destruir();
+      this.#actual = siguiente;
+      this.#siguiente = null;
+      this.#mostrar(siguiente, true, avance);
+      this.#cargaSiguiente = avance.posicion + 1 < avance.total ? this.#pedirSiguiente(siguiente.id) : Promise.resolve();
+    } catch (e) {
+      if (this.#terminado) return;
+      if (e instanceof ErrorSinPase) { this.perderPase(); return; }
+      if (e instanceof ErrorFaltaRegistro) { this.#alFaltarRegistro(); return; }
+      this.#fallar();
+    } finally {
+      this.#avanzando = false;
+      if (!this.#terminado) {
+        this.#espera.hidden = true;
+        this.#contenedor.removeAttribute("aria-busy");
+      }
+    }
+  }
+
   #aplicarSonido() {
     for (const v of [this.#actual, this.#siguiente]) v?.aplicarSonido(this.#conSonido);
   }
 
   #crear(datos) {
-    const video = new VideoDelFeed(this.#repo, datos, this, this.#metricas);
+    const video = new VideoDelFeed(this.#repo, datos, this, this.#metricas, { soloVideo: this.#soloVideo });
     video.aplicarSonido(this.#conSonido);
     video.raiz.hidden = true;
     this.#contenedor.append(video.raiz);
     return video;
   }
 
-  #mostrar(video, animar) {
+  #mostrar(video, animar, avance) {
     video.raiz.hidden = false;
     if (animar) {
       video.raiz.classList.add("entrando");
       video.raiz.addEventListener("animationend", () => video.raiz.classList.remove("entrando"), { once: true });
     }
     video.activar();
-    this.#botonSiguiente.disabled = false;
+    this.alMostrar({ posicion: avance.posicion, total: avance.total });
   }
 
   #ponerSiguiente(video) {
@@ -1600,61 +1692,52 @@ class FeedACiegas {
       const estado = await Reintentos.ejecutar(() => this.#repo.estado(), () => !this.#terminado);
       if (this.#terminado) return;
       const [actual, siguiente] = estado.videos;
-      if (estado.etapa !== "ciega" || actual?.id !== idActual || !siguiente) throw new Error("siguiente");
+      if (estado.etapa !== this.#etapa || actual?.id !== idActual || !siguiente) throw new Error("siguiente");
       this.#ponerSiguiente(this.#crear(siguiente));
     } catch (e) {
       if (e instanceof ErrorSinPase && !this.#terminado) this.perderPase();
     }
   }
 
-  async #avanzar() {
-    if (this.#avanzando || this.#terminado || !this.#actual || !PilaDeCapas.vacia) return;
-    this.#avanzando = true;
-    this.#botonSiguiente.disabled = true;
-    const actual = this.#actual;
-    const medicion = actual.terminar();
-    this.#espera.hidden = false;
-    this.#contenedor.setAttribute("aria-busy", "true");
-    try {
-      await this.#metricas.esperarPendientes();
-      const avance = await Reintentos.ejecutar(
-        () => this.#repo.registrarVisualizacion({ video_id: actual.id, ...medicion }), () => !this.#terminado);
-      if (this.#terminado) return;
-      if (avance.etapa !== "ciega") { this.#terminado = true; this.#alTerminar(); return; }
-      await this.#cargaSiguiente;
-      const siguiente = this.#siguiente;
-      if (this.#terminado) return;
-      if (!siguiente) throw new Error("siguiente");
-      actual.destruir();
-      this.#actual = siguiente;
-      this.#siguiente = null;
-      this.#mostrar(siguiente, true);
-      this.#cargaSiguiente = avance.posicion + 1 < avance.total ? this.#pedirSiguiente(siguiente.id) : Promise.resolve();
-    } catch (e) {
-      if (this.#terminado) return;
-      if (e instanceof ErrorSinPase) { this.perderPase(); return; }
-      if (e instanceof ErrorFaltaRegistro) { this.#alFaltarRegistro(); return; }
-      this.#fallar();
-    } finally {
-      this.#avanzando = false;
-      if (!this.#terminado) {
-        this.#espera.hidden = true;
-        this.#contenedor.removeAttribute("aria-busy");
-      }
-    }
-  }
-
   /** Error sin detalles técnicos: se quitan los videos y no se puede seguir sin recargar. */
   #fallar() {
     this.#terminado = true;
-    this.#metricas.detener();
+    this.#metricas?.detener();
     this.#quitarVideos();
     this.#espera.hidden = true;
     this.#contenedor.removeAttribute("aria-busy");
-    this.#botonSiguiente.disabled = true;
-    this.#estado.textContent = FeedACiegas.MENSAJE_FALLO;
+    this.#boton.disabled = true;
+    this.#estado.textContent = SecuenciaDeVideos.MENSAJE_FALLO;
     this.#estado.setAttribute("role", "alert");
     this.#contenedor.replaceChildren(this.#estado);
+    this.alFallar();
+  }
+}
+
+/**
+ * Fase a ciegas. Cada toque se manda a "registrar-interaccion" y la medición de cada video a
+ * "registrar-visualizacion". En PC solo se avanza con el botón ↓ y la tecla ↓ (la rueda y el panel táctil no
+ * mueven el feed); en celular, deslizando hacia arriba. Nunca hay forma de regresar.
+ */
+class FeedACiegas extends SecuenciaDeVideos {
+  static UMBRAL_DESLIZAR_PX = 60;
+  static TECLA_SIGUIENTE = "ArrowDown";
+  static TECLAS_BLOQUEADAS = new Set(["ArrowUp", "PageUp", "PageDown", "Home", "End", " "]);
+
+  #contenedor = document.getElementById("feed");
+  #botonSiguiente = document.getElementById("nav-siguiente");
+  #toque = null;
+
+  constructor(repo, avisos) {
+    super(repo, {
+      etapa: "ciega",
+      registrar: (cuerpo) => repo.registrarVisualizacion(cuerpo),
+      metricas: new EnviadorDeInteracciones(repo),
+      contenedor: document.getElementById("feed"),
+      estado: document.getElementById("feed-estado"),
+      espera: document.getElementById("feed-espera"),
+      boton: document.getElementById("nav-siguiente"),
+    }, avisos);
   }
 
   /** Dentro de un panel, menú o ventana, los gestos son de esa capa (p. ej., desplazar comentarios). */
@@ -1662,15 +1745,15 @@ class FeedACiegas {
     return Boolean(objetivo?.closest?.(".capa, .menu-mas"));
   }
 
-  #conectarNavegacion() {
-    const opciones = { signal: this.#escuchas.signal };
-    this.#botonSiguiente.addEventListener("click", () => this.#avanzar(), opciones);
+  conectar() {
+    const opciones = { signal: this.senal };
+    this.#botonSiguiente.addEventListener("click", () => this.avanzar(), opciones);
 
     // En PC solo la tecla ↓ avanza. La rueda, el panel táctil y Ctrl + rueda (zoom) no mueven el feed:
     // no hay escuchador de "wheel" y el feed no se desplaza por sí mismo. Nunca hay forma de regresar.
     document.addEventListener("keydown", (e) => {
       if (!PilaDeCapas.vacia || e.target.closest?.("input, textarea, select")) return;
-      if (e.key === FeedACiegas.TECLA_SIGUIENTE) { e.preventDefault(); this.#avanzar(); }
+      if (e.key === FeedACiegas.TECLA_SIGUIENTE) { e.preventDefault(); this.avanzar(); }
       else if (FeedACiegas.TECLAS_BLOQUEADAS.has(e.key) && !e.target.closest?.("button")) e.preventDefault();
     }, opciones);
 
@@ -1685,13 +1768,173 @@ class FeedACiegas {
       const fin = e.changedTouches[0];
       if (!inicio || !fin) return;
       const dy = inicio.y - fin.clientY;
-      if (dy >= FeedACiegas.UMBRAL_DESLIZAR_PX && dy > Math.abs(inicio.x - fin.clientX)) this.#avanzar();
+      if (dy >= FeedACiegas.UMBRAL_DESLIZAR_PX && dy > Math.abs(inicio.x - fin.clientX)) this.avanzar();
     }, { ...opciones, passive: true });
     this.#contenedor.addEventListener("touchcancel", () => { this.#toque = null; }, opciones);
   }
 }
 
-/** Pantalla de un solo mensaje (con botón opcional): instrucción, revelación y fin provisional. */
+/**
+ * Escala de 1 a 6 (grupo de opciones con role="radiogroup"; una sola elegible). Con las flechas se recorre
+ * y elige, como en cualquier grupo de opciones; Inicio y Fin van a los extremos. Vive solo en memoria.
+ */
+class EscalaDeSeguridad {
+  static OPCIONES = Object.freeze([
+    "Totalmente seguro que es real",
+    "Bastante seguro que es real",
+    "Poco seguro que es real",
+    "Poco seguro que es IA",
+    "Bastante seguro que es IA",
+    "Totalmente seguro que es IA",
+  ]);
+  static SIGUIENTE = new Set(["ArrowRight", "ArrowDown"]);
+  static ANTERIOR = new Set(["ArrowLeft", "ArrowUp"]);
+
+  #opciones;
+  #valor = null;
+  #alCambiar;
+
+  constructor(grupo, alCambiar) {
+    this.#alCambiar = alCambiar;
+    this.#opciones = EscalaDeSeguridad.OPCIONES.map((texto, i) => {
+      const opcion = document.createElement("button");
+      opcion.type = "button";
+      opcion.className = "escala-opcion";
+      opcion.setAttribute("role", "radio");
+      opcion.setAttribute("aria-label", `${i + 1}: ${texto}`);
+      const numero = document.createElement("span");
+      numero.className = "escala-numero";
+      numero.setAttribute("aria-hidden", "true");
+      numero.textContent = String(i + 1);
+      const etiqueta = document.createElement("span");
+      etiqueta.className = "escala-texto";
+      etiqueta.setAttribute("aria-hidden", "true");
+      etiqueta.textContent = texto;
+      opcion.append(numero, etiqueta);
+      opcion.addEventListener("click", () => this.#elegir(i, false));
+      return opcion;
+    });
+    grupo.replaceChildren(...this.#opciones);
+    grupo.addEventListener("keydown", (e) => this.#tecla(e));
+    this.reiniciar();
+  }
+
+  /** 1 a 6, o null si aún no elige. */
+  get valor() { return this.#valor; }
+
+  reiniciar() {
+    this.#valor = null;
+    this.habilitar(true);
+    this.#pintar();
+  }
+
+  habilitar(si) {
+    for (const opcion of this.#opciones) opcion.disabled = !si;
+  }
+
+  #elegir(i, enfocar) {
+    const opcion = this.#opciones[i];
+    if (!opcion || opcion.disabled) return;
+    this.#valor = i + 1;
+    this.#pintar();
+    if (enfocar) opcion.focus();
+    this.#alCambiar(this.#valor);
+  }
+
+  #tecla(e) {
+    const i = this.#opciones.indexOf(e.target);
+    if (i < 0) return;
+    const n = this.#opciones.length;
+    let j = null;
+    if (EscalaDeSeguridad.SIGUIENTE.has(e.key)) j = (i + 1) % n;
+    else if (EscalaDeSeguridad.ANTERIOR.has(e.key)) j = (i + n - 1) % n;
+    else if (e.key === "Home") j = 0;
+    else if (e.key === "End") j = n - 1;
+    if (j === null) return;
+    e.preventDefault();
+    this.#elegir(j, true);
+  }
+
+  /** aria-checked y un solo punto de tabulación: la opción elegida (o la primera si no hay). */
+  #pintar() {
+    const enfocable = this.#valor === null ? 0 : this.#valor - 1;
+    this.#opciones.forEach((opcion, i) => {
+      opcion.setAttribute("aria-checked", String(this.#valor === i + 1));
+      opcion.tabIndex = i === enfocable ? 0 : -1;
+    });
+  }
+}
+
+/**
+ * Paso 9: evaluación. El mismo reproductor de la fase a ciegas, solo con pausa y silencio, en bucle hasta que
+ * el participante conteste. Debajo, la pregunta y la escala de 1 a 6; "Siguiente" (en el último, "Terminar")
+ * se activa al elegir y es la única forma de avanzar: la rueda, el panel táctil, el deslizamiento y las teclas
+ * no cambian de video. La respuesta va con la medición a "registrar-evaluacion" y el siguiente aparece cuando
+ * el servidor confirma. No se registran interacciones.
+ */
+class EvaluacionDeVideos extends SecuenciaDeVideos {
+  #seccion = document.getElementById("evaluacion");
+  #panel = document.getElementById("evaluacion-panel");
+  #pregunta = document.getElementById("evaluacion-pregunta");
+  #boton = document.getElementById("evaluacion-siguiente");
+  #escala;
+
+  constructor(repo, avisos) {
+    super(repo, {
+      etapa: "evaluacion",
+      registrar: (cuerpo) => repo.registrarEvaluacion(cuerpo),
+      soloVideo: true,
+      contenedor: document.getElementById("evaluacion-video"),
+      estado: document.getElementById("evaluacion-estado"),
+      espera: document.getElementById("evaluacion-espera"),
+      boton: document.getElementById("evaluacion-siguiente"),
+    }, avisos);
+    this.#escala = new EscalaDeSeguridad(document.getElementById("evaluacion-escala"), () => this.#pintarBoton());
+  }
+
+  iniciar(estado) {
+    this.#panel.hidden = false;
+    this.#seccion.hidden = false;
+    super.iniciar(estado);
+  }
+
+  conectar() {
+    this.#boton.addEventListener("click", () => this.#confirmar(), { signal: this.senal });
+  }
+
+  alMostrar({ posicion, total }) {
+    const texto = posicion + 1 >= total ? "Terminar" : "Siguiente";
+    this.#boton.textContent = texto;
+    this.#boton.setAttribute("aria-label", texto);
+    this.#escala.reiniciar();
+    this.#pintarBoton();
+    this.#seccion.scrollTop = 0;
+    this.#pregunta.focus({ preventScroll: true });
+  }
+
+  alFallar() {
+    this.#panel.hidden = true;
+  }
+
+  vaciar() {
+    super.vaciar();
+    this.#escala.reiniciar();
+    this.#seccion.hidden = true;
+  }
+
+  #pintarBoton() {
+    this.#boton.disabled = this.ocupado || this.#escala.valor === null;
+  }
+
+  async #confirmar() {
+    const respuesta = this.#escala.valor;
+    if (respuesta === null || this.ocupado) return;
+    this.#escala.habilitar(false);
+    await this.avanzar({ respuesta });
+  }
+}
+
+/** Pantalla de un solo mensaje (con botón opcional): instrucción, revelación y fin. */
 class PantallaDeMensaje {
   #seccion;
   #boton;
@@ -1948,8 +2191,101 @@ class PantallaDeRevelacion {
 }
 
 /**
+ * Paso 10: "¿Consideras que antes de hoy habías visto o escuchado deepfakes?". "Sí" y "No" son de una sola
+ * elección (aria-pressed); "Aceptar" se activa al elegir y manda { etapa: "exposicion", si }. La elección vive
+ * solo en memoria.
+ */
+class PantallaDeExposicion {
+  #seccion = document.getElementById("exposicion");
+  #pregunta = document.getElementById("exposicion-pregunta");
+  #si = document.getElementById("exposicion-si");
+  #no = document.getElementById("exposicion-no");
+  #aceptar = document.getElementById("exposicion-aceptar");
+  #error = document.getElementById("exposicion-error");
+  #alAceptar;
+  #eleccion = null;
+  #ocupado = false;
+
+  constructor(alAceptar) {
+    this.#alAceptar = alAceptar;
+    this.#si.addEventListener("click", () => this.#elegir(true));
+    this.#no.addEventListener("click", () => this.#elegir(false));
+    this.#aceptar.addEventListener("click", () => this.#enviar());
+  }
+
+  mostrar() {
+    this.#eleccion = null;
+    this.#ocupado = false;
+    this.mostrarError("");
+    this.#pintar();
+    this.#seccion.hidden = false;
+    this.#pregunta.focus();
+  }
+
+  ocultar() {
+    this.#seccion.hidden = true;
+    this.#eleccion = null;
+  }
+
+  ocupado(si) {
+    this.#ocupado = si;
+    this.#aceptar.setAttribute("aria-busy", String(si));
+    this.#pintar();
+  }
+
+  mostrarError(texto) {
+    this.#error.textContent = texto;
+    this.#error.hidden = !texto;
+  }
+
+  #elegir(si) {
+    if (this.#ocupado) return;
+    this.#eleccion = si;
+    this.mostrarError("");
+    this.#pintar();
+  }
+
+  #pintar() {
+    this.#si.setAttribute("aria-pressed", String(this.#eleccion === true));
+    this.#no.setAttribute("aria-pressed", String(this.#eleccion === false));
+    this.#si.disabled = this.#ocupado;
+    this.#no.disabled = this.#ocupado;
+    this.#aceptar.disabled = this.#ocupado || this.#eleccion === null;
+  }
+
+  #enviar() {
+    if (this.#ocupado || this.#eleccion === null) return;
+    this.#alAceptar({ etapa: "exposicion", si: this.#eleccion });
+  }
+}
+
+/**
+ * Paso 11: el resultado individual que calculó el servidor ("Tu resultado: X aciertos de N.") y el
+ * agradecimiento. Sin botones: es la pantalla final. Si ningún video tiene clasificación (total 0), solo el
+ * agradecimiento. Nunca dice cuáles videos eran de IA.
+ */
+class PantallaDeResultado {
+  #seccion = document.getElementById("resultado");
+  #cifra = document.getElementById("resultado-texto");
+  #gracias = document.getElementById("resultado-gracias");
+
+  mostrar(aciertos, total) {
+    const conCifra = total > 0;
+    this.#cifra.textContent = conCifra ? `Tu resultado: ${aciertos} aciertos de ${total}.` : "";
+    this.#cifra.hidden = !conCifra;
+    this.#seccion.hidden = false;
+    (conCifra ? this.#cifra : this.#gracias).focus();
+  }
+
+  ocultar() {
+    this.#seccion.hidden = true;
+  }
+}
+
+/**
  * Arranque y flujo: código → aviso y datos → (etapa que diga el servidor) instrucción → fase a ciegas →
- * reconocimiento → "¿harías lo que te pide?" → revelación → "¿cuáles eran deepfake?" → pantalla provisional.
+ * reconocimiento → "¿harías lo que te pide?" → revelación → "¿cuáles eran deepfake?" → evaluación →
+ * exposición previa a deepfakes → resultado (y "fin", si la persona que aplica la prueba la cierra).
  * Una sola pantalla a la vez y sin forma de regresar. Sin pase solo existe la pantalla de acceso; con pase,
  * el vigilante revisa la sesión todo el tiempo. La etapa nunca se guarda en el navegador: siempre se
  * pregunta a "feed-videos" (y su contenido a "contenido-etapa"), así que al recargar sigue donde iba.
@@ -1958,7 +2294,7 @@ class AppFeed {
   static AVISO_SESION_CERRADA = "Tu sesión se cerró";
   static MENSAJE_FALLO = "Algo salió mal. Recarga la página.";
   static MENSAJE_COMENZAR = "No se pudo continuar. Intenta de nuevo.";
-  static ETAPAS_CON_CONTENIDO = new Set(["conoce", "convencio", "revelacion", "memoria"]);
+  static ETAPAS_CON_CONTENIDO = new Set(["conoce", "convencio", "revelacion", "memoria", "exposicion", "resultado"]);
   static PANTALLAS_FEED = ["cabecera", "nav", "feed"];
 
   #funciones;
@@ -1968,7 +2304,9 @@ class AppFeed {
   #instruccion;
   #seleccion;
   #revelacion;
-  #finParte;
+  #exposicion;
+  #resultado = new PantallaDeResultado();
+  #fin;
   #pase = null;
   #repo = null;
   #pagina = null;
@@ -1985,7 +2323,8 @@ class AppFeed {
     });
     this.#seleccion = new PantallaDeSeleccion((cuerpo) => this.#responder(this.#seleccion, cuerpo));
     this.#revelacion = new PantallaDeRevelacion(() => this.#responder(this.#revelacion, { etapa: "revelacion" }));
-    this.#finParte = new PantallaDeMensaje("fin-parte", { texto: "fin-parte-texto" });
+    this.#exposicion = new PantallaDeExposicion((cuerpo) => this.#responder(this.#exposicion, cuerpo));
+    this.#fin = new PantallaDeMensaje("fin", { texto: "fin-texto" });
   }
 
   iniciar() {
@@ -2042,8 +2381,10 @@ class AppFeed {
     if (this.#pase !== pase) return;
     if (estado.etapa === "instruccion") this.#instruccion.mostrar();
     else if (estado.etapa === "ciega") this.#mostrarFeed(estado);
+    else if (estado.etapa === "evaluacion") this.#mostrarEvaluacion(estado);
     else if (AppFeed.ETAPAS_CON_CONTENIDO.has(estado.etapa)) this.#mostrarContenido();
-    else this.#mostrarFinParte();
+    else if (estado.etapa === "fin") { this.#ocultarPantallas(); this.#fin.mostrar(); }
+    else this.#mostrarFallo();
   }
 
   /** Pide a "contenido-etapa" lo de la etapa actual y muestra su pantalla (el servidor manda la etapa). */
@@ -2062,11 +2403,12 @@ class AppFeed {
     }
     if (this.#pase !== pase) return;
     const { etapa } = contenido;
-    if (etapa === "instruccion" || etapa === "ciega") { this.#ocultarPantallas(); this.#continuar(); return; }
     this.#ocultarPantallas();
     if (PantallaDeSeleccion.admite(etapa)) this.#seleccion.mostrar(etapa, contenido.elementos);
     else if (etapa === "revelacion") this.#revelacion.mostrar(contenido.segundos);
-    else this.#finParte.mostrar();
+    else if (etapa === "exposicion") this.#exposicion.mostrar();
+    else if (etapa === "resultado") this.#resultado.mostrar(contenido.aciertos, contenido.total);
+    else this.#continuar(); // la etapa ya es otra (p. ej., evaluación o fin): feed-videos decide la pantalla
   }
 
   /** "Aceptar" o "De acuerdo": manda la respuesta y pasa a la etapa que confirme el servidor. */
@@ -2093,8 +2435,7 @@ class AppFeed {
       this.#respondiendo = false;
     }
     if (this.#pase !== pase) return;
-    if (nueva && !AppFeed.ETAPAS_CON_CONTENIDO.has(nueva)) { this.#ocultarPantallas(); this.#finParte.mostrar(); }
-    else if (nueva) this.#mostrarContenido();
+    if (nueva && AppFeed.ETAPAS_CON_CONTENIDO.has(nueva)) this.#mostrarContenido();
     else { this.#ocultarPantallas(); this.#continuar(); }
   }
 
@@ -2136,19 +2477,27 @@ class AppFeed {
     this.#pagina.iniciar(estado);
   }
 
-  /** Pantalla provisional: se reemplazará por la siguiente etapa en la próxima entrega. */
-  #mostrarFinParte() {
+  /** Paso 9: la evaluación, con los videos que entregó "feed-videos" (el actual y el siguiente). */
+  #mostrarEvaluacion(estado) {
+    if (!this.#pase || this.#pagina) return;
     this.#ocultarPantallas();
-    this.#finParte.mostrar();
+    this.#pagina = new EvaluacionDeVideos(this.#repo, {
+      alPerderPase: () => this.#cerrarSesion(),
+      alFaltarRegistro: () => this.#volverARegistro(),
+      alTerminar: () => { this.#ocultarPantallas(); this.#mostrarContenido(); },
+    });
+    this.#pagina.iniciar(estado);
   }
 
-  /** Una sola pantalla a la vez: quita el feed y oculta todas las demás. */
+  /** Una sola pantalla a la vez: quita el feed o la evaluación y oculta todas las demás. */
   #ocultarPantallas() {
     this.#quitarFeed();
     this.#instruccion.ocultar();
     this.#seleccion.ocultar();
     this.#revelacion.ocultar();
-    this.#finParte.ocultar();
+    this.#exposicion.ocultar();
+    this.#resultado.ocultar();
+    this.#fin.ocultar();
   }
 
   /** Error genérico (sin detalles técnicos) cuando no se pudo saber la etapa. */

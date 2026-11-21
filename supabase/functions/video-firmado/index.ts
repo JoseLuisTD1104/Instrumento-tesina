@@ -1,7 +1,7 @@
 // Edge Function "video-firmado" de corto (pública con pase).
 // Con un pase de participante válido (y emitido después del último cierre de sesiones) recibe { id }
-// de un video. Solo firma el video actual o el siguiente de la fase a ciegas del participante (y si está
-// publicado): cualquier otro recibe el rechazo genérico. Devuelve una URL firmada de pocos minutos para el
+// de un video. Solo firma el video actual o el siguiente de la fase de videos en curso del participante (la
+// fase a ciegas o la evaluación) y si está publicado: cualquier otro recibe el rechazo genérico. Devuelve una URL firmada de pocos minutos para el
 // bucket privado "videos". Sin pase válido: 401 y no firma. No revisa abierto_hasta.
 //
 // La clave secreta NUNCA está en el repositorio: se lee de las variables de entorno de Supabase
@@ -9,7 +9,7 @@
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
 import { ParticipanteActual } from "../_shared/participante-actual.ts";
-import { FaseCiega, PATRON_UUID } from "../_shared/progreso.ts";
+import { FaseDeVideos, PATRON_UUID } from "../_shared/progreso.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -45,8 +45,9 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if (typeof id !== "string" || !PATRON_UUID.test(id)) return canal.rechazo();
     id = id.toLowerCase();
 
-    // 1) Solo el video actual o el siguiente de la fase a ciegas; debe existir y estar publicado.
-    if (!FaseCiega.visibles(participante.progreso).includes(id as string)) return canal.rechazo();
+    // 1) Solo el video actual o el siguiente de la fase en curso; debe existir y estar publicado.
+    const fase = FaseDeVideos.de(participante.progreso);
+    if (!fase || !fase.visibles(participante.progreso).includes(id as string)) return canal.rechazo();
     const filas = await servicio.consultar("videos", { select: "ruta_archivo", id: `eq.${id}`, publicado: "eq.true", limit: "1" });
     const ruta = filas[0]?.ruta_archivo;
     if (typeof ruta !== "string" || !PATRON_RUTA.test(ruta)) return canal.rechazo();

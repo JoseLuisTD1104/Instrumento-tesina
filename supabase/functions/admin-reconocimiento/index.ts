@@ -7,6 +7,9 @@
 // - crear_actor { alias, imagen }, cambiar_cara { actor_id, imagen }, borrar_actor { actor_id } (se rechaza
 //   si tiene videos asignados), subir_miniatura { video_id, imagen }, asignar_actor { video_id, actor_id | null } (409 actor_ya_asignado si
 //   el actor ya está en otro video).
+// - listar_clasificacion: { clasificacion: [{ video_id, origen, tipo }] } de los videos ya clasificados.
+// - fijar_clasificacion { video_id, origen: "real" | "ia", tipo: "ingenieria_social" | "normal" }: inserta o
+//   actualiza la clasificación (404 si el video no existe). Solo pasa por aquí: el panel nunca la lee directo.
 // imagen va en base64; el tipo (jpeg, png o webp) se decide por los bytes iniciales y no puede pasar de
 // 400 KB ya decodificada. La ruta la genera el servidor; al reemplazar una imagen se borra la anterior.
 // Errores con etiquetas fijas, sin datos. Nunca registra ids, alias, rutas ni tokens.
@@ -17,6 +20,7 @@ import { PATRON_UUID } from "../_shared/progreso.ts";
 import {
   AlmacenDeReconocimiento, type Carpeta, RegistroDeActores, ValidadorDeAlias, ValidadorDeImagen, VideosDeReconocimiento,
 } from "../_shared/reconocimiento.ts";
+import { RegistroDeClasificacion, ValidadorDeClasificacion } from "../_shared/clasificacion.ts";
 import { ClienteRest } from "../_shared/supabase.ts";
 import { servir } from "../_shared/servidor.ts";
 
@@ -32,6 +36,8 @@ const CAMPOS: Record<string, string[]> = {
   borrar_actor: ["actor_id"],
   subir_miniatura: ["video_id", "imagen"],
   asignar_actor: ["video_id", "actor_id"],
+  listar_clasificacion: [],
+  fijar_clasificacion: ["video_id", "origen", "tipo"],
 };
 
 /** Resultado de una acción: estado HTTP y cuerpo. */
@@ -46,16 +52,18 @@ function uuid(valor: unknown): string | null {
   return typeof valor === "string" && PATRON_UUID.test(valor) ? valor.toLowerCase() : null;
 }
 
-/** Cada acción del panel sobre actores, caras y miniaturas. */
+/** Cada acción del panel sobre actores, caras, miniaturas y la clasificación de los videos. */
 class AccionesDeReconocimiento {
   #actores: RegistroDeActores;
   #videos: VideosDeReconocimiento;
   #almacen: AlmacenDeReconocimiento;
+  #clasificacion: RegistroDeClasificacion;
 
   constructor(servicio: ClienteRest) {
     this.#actores = new RegistroDeActores(servicio);
     this.#videos = new VideosDeReconocimiento(servicio);
     this.#almacen = new AlmacenDeReconocimiento(servicio);
+    this.#clasificacion = new RegistroDeClasificacion(servicio);
   }
 
   async ejecutar(accion: string, c: Record<string, unknown>): Promise<Resultado> {
@@ -67,6 +75,8 @@ class AccionesDeReconocimiento {
       case "borrar_actor": return await this.#borrarActor(c.actor_id);
       case "subir_miniatura": return await this.#subirMiniatura(c.video_id, c.imagen);
       case "asignar_actor": return await this.#asignarActor(c.video_id, c.actor_id);
+      case "listar_clasificacion": return [200, { clasificacion: await this.#clasificacion.listar() }];
+      case "fijar_clasificacion": return await this.#fijarClasificacion(c.video_id, c.origen, c.tipo);
       default: return INVALIDA;
     }
   }
@@ -163,6 +173,14 @@ class AccionesDeReconocimiento {
       if (e instanceof ErrorConflicto) return ACTOR_YA_ASIGNADO; // otra asignación simultánea ganó el índice único
       throw e;
     }
+  }
+
+  async #fijarClasificacion(videoRecibido: unknown, origen: unknown, tipo: unknown): Promise<Resultado> {
+    const clasificacion = ValidadorDeClasificacion.validar(videoRecibido, origen, tipo);
+    if (!clasificacion) return INVALIDA;
+    if (!(await this.#videos.leer(clasificacion.video_id))) return NO_ENCONTRADO; // la tabla no tiene llave foránea
+    await this.#clasificacion.fijar(clasificacion, Date.now());
+    return OK;
   }
 
   /** Guarda la ruta nueva; si no se pudo (o falló), borra el objeto recién subido. */

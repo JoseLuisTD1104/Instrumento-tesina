@@ -343,3 +343,89 @@ class VideoRepositorio {
     return new ErrorPanel(generico);
   }
 }
+
+/**
+ * Origen (Real / IA) y tipo (Ingeniería social / Normal) de cada video en "Administrar videos". Se leen con
+ * listar_clasificacion y se guardan con fijar_clasificacion de "admin-reconocimiento" (nunca directo a la
+ * base). Se guarda en cuanto los dos selectores tienen valor. Los videos publicados sin clasificar llevan la
+ * advertencia "Falta clasificar". Todo texto con textContent u Option.
+ */
+class ControlesDeClasificacion {
+  static ORIGENES = Object.freeze([["real", "Real"], ["ia", "IA"]]);
+  static TIPOS = Object.freeze([["ingenieria_social", "Ingeniería social"], ["normal", "Normal"]]);
+  static SIN_ELEGIR = "Sin elegir";
+
+  #cliente;
+  #clasificacion = new Map();
+  #cargada = false;
+
+  constructor(cliente) {
+    this.#cliente = cliente;
+  }
+
+  async cargar() {
+    this.#cargada = false;
+    this.#clasificacion = await this.#cliente.listarClasificacion();
+    this.#cargada = true;
+  }
+
+  conectar(fila, video) {
+    const origen = fila.querySelector("[data-clasificacion-origen]");
+    const tipo = fila.querySelector("[data-clasificacion-tipo]");
+    const advertencia = fila.querySelector("[data-advertencia-clasificacion]");
+    const estado = fila.querySelector("[data-estado-clasificacion]");
+    const etiqueta = `«${video.titulo}»`;
+    origen.setAttribute("aria-label", `Origen de ${etiqueta}`);
+    tipo.setAttribute("aria-label", `Tipo de ${etiqueta}`);
+
+    let actual = this.#clasificacion.get(video.id) ?? null;
+    const pintar = () => {
+      ControlesDeClasificacion.#opciones(origen, ControlesDeClasificacion.ORIGENES, actual?.origen ?? null);
+      ControlesDeClasificacion.#opciones(tipo, ControlesDeClasificacion.TIPOS, actual?.tipo ?? null);
+      advertencia.hidden = !(this.#cargada && video.publicado && !actual);
+    };
+    pintar();
+    if (!this.#cargada) {
+      origen.disabled = true;
+      tipo.disabled = true;
+      PanelFormato.mensaje(estado, "No se cargó la clasificación. Recarga la lista.", "error");
+      return;
+    }
+
+    const alCambiar = async () => {
+      if (!origen.value || !tipo.value) {
+        PanelFormato.mensaje(estado, "Elige origen y tipo para guardar la clasificación.");
+        return;
+      }
+      const elegida = { origen: origen.value, tipo: tipo.value };
+      if (actual && actual.origen === elegida.origen && actual.tipo === elegida.tipo) return;
+      origen.disabled = true;
+      tipo.disabled = true;
+      PanelFormato.mensaje(estado, "Guardando clasificación…");
+      try {
+        await this.#cliente.fijarClasificacion(video.id, elegida.origen, elegida.tipo);
+        actual = elegida;
+        this.#clasificacion.set(video.id, elegida);
+        PanelFormato.mensaje(estado, "Clasificación guardada.", "exito");
+      } catch (e) {
+        PanelFormato.mensaje(estado, PanelFormato.errorVisible(e, "No se pudo guardar la clasificación."), "error");
+      } finally {
+        origen.disabled = false;
+        tipo.disabled = false;
+        pintar();
+      }
+    };
+    origen.addEventListener("change", alCambiar);
+    tipo.addEventListener("change", alCambiar);
+  }
+
+  /** Opciones del selector; "Sin elegir" solo mientras no hay un valor guardado. */
+  static #opciones(selector, opciones, valor) {
+    const previo = selector.value;
+    const lista = opciones.map(([v, texto]) => new Option(texto, v));
+    if (!valor) lista.unshift(new Option(ControlesDeClasificacion.SIN_ELEGIR, ""));
+    selector.replaceChildren(...lista);
+    // Sin valor guardado se conserva lo que ya eligió en el otro paso (p. ej., solo el origen).
+    selector.value = valor ?? (opciones.some(([v]) => v === previo) ? previo : "");
+  }
+}

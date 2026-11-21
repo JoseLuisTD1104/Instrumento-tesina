@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261121-2">
+<link rel="stylesheet" href="css/panel.css?v=20261121-3">
 </head>
 <body class="verificando">
 
@@ -501,12 +501,16 @@
     </div>
     <div class="fila-reconocimiento">
       <label class="campo-actor"><span>Actor</span><select data-actor></select></label>
+      <label class="campo-actor campo-clasificacion"><span>Origen</span><select data-clasificacion-origen></select></label>
+      <label class="campo-actor campo-clasificacion"><span>Tipo</span><select data-clasificacion-tipo></select></label>
       <div class="control-miniatura">
         <div class="miniatura-rec"><img data-miniatura-previa hidden><span data-miniatura-vacia>Sin miniatura</span></div>
         <label class="btn-sec btn-archivo">Subir miniatura<input class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-miniatura-archivo></label>
       </div>
       <p class="advertencia" data-advertencia hidden>Falta actor o miniatura</p>
+      <p class="advertencia" data-advertencia-clasificacion hidden>Falta clasificar</p>
       <p class="mensaje estado-rec" data-estado-rec role="status" hidden></p>
+      <p class="mensaje estado-rec" data-estado-clasificacion role="status" hidden></p>
     </div>
   </div>
 </template>
@@ -582,9 +586,9 @@
 <script src="config.js?v=20261120-2"></script>
 <script src="js/admin-login.js?v=20261120-2"></script>
 <script src="js/sesion-segura.js?v=20261120-2"></script>
-<script src="js/videos.js?v=20261121-1"></script>
+<script src="js/videos.js?v=20261121-2"></script>
 <script src="js/formulario-video.js?v=20261120-2"></script>
-<script src="js/reconocimiento.js?v=20261121-2"></script>
+<script src="js/reconocimiento.js?v=20261121-3"></script>
 <script src="js/pestanas-videos.js?v=20261121-1"></script>
 <script src="js/pestana-comentarios.js?v=20261120-2"></script>
 <script src="js/pestana-autenticacion.js?v=20261120-2"></script>

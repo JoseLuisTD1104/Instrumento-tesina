@@ -1,5 +1,6 @@
 // Edge Function "validar-codigo" (pública). Recibe { codigo } de 8 dígitos y, si es correcto y el
-// acceso está abierto, entrega un pase de participante (JWT HS256, 3 h).
+// acceso está abierto, entrega un pase de participante (JWT HS256). El pase y su sesión en sesiones_activas
+// duran PaseParticipante.DURACION_S (45 min), dentro del máximo de 1 hora que impone la base.
 // Todo rechazo responde igual: mismo estado, mismo mensaje y una espera mínima fija.
 import { Entorno, ErrorControlado, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
