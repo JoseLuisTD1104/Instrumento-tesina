@@ -190,10 +190,11 @@ class PestanaSubir {
   }
 }
 
-/** Pestaña "Administrar videos": lista, editar y borrar. */
+/** Pestaña "Administrar videos": lista, editar y borrar; actor y miniatura de cada video. */
 class PestanaAdministrar {
   #repo;
   #dialogos;
+  #reconocimiento;
   #form;
   #videos = [];
   #editando = null;
@@ -215,9 +216,11 @@ class PestanaAdministrar {
   #botonRecargar = document.getElementById("admin-recargar");
   #video = document.getElementById("editar-video");
 
-  constructor(repo, dialogos) {
+  /** reconocimiento: ControlesDeReconocimiento (actor y miniatura por video, vía admin-reconocimiento). */
+  constructor(repo, dialogos, reconocimiento) {
     this.#repo = repo;
     this.#dialogos = dialogos;
+    this.#reconocimiento = reconocimiento;
     this.#form = new FormularioVideo(document.getElementById("editar-campos"), repo, "editar");
     this.#form.alCambiar(() => this.#actualizarBotones());
   }
@@ -252,8 +255,14 @@ class PestanaAdministrar {
     this.#botonRecargar.disabled = true;
     try {
       this.#videos = await this.#repo.listar();
-      this.#desactualizada = false;
       PanelFormato.mensaje(this.#mensajeLista, "");
+      try {
+        await this.#reconocimiento.cargar();
+        this.#desactualizada = false;
+      } catch (e) {
+        PanelFormato.mensaje(this.#mensajeLista,
+          `No se cargaron los actores ni las miniaturas. ${PanelFormato.errorVisible(e, "Intenta recargar.")}`, "error");
+      }
       await this.#render();
     } catch (e) {
       PanelFormato.mensaje(this.#mensajeLista, PanelFormato.errorVisible(e, "No se pudo cargar la lista de videos."), "error");
@@ -294,6 +303,9 @@ class PestanaAdministrar {
     borrar.setAttribute("aria-label", `Borrar «${video.titulo}»`);
     editar.addEventListener("click", () => this.#abrirEditor(video));
     borrar.addEventListener("click", () => this.#borrar(video));
+    this.#reconocimiento.conectar(fila, video, (cambios) => {
+      this.#videos = this.#videos.map((v) => (v.id === video.id ? { ...v, ...cambios } : v));
+    });
     return fila;
   }
 

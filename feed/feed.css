@@ -294,7 +294,7 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .acceso-error { background: #3a1820; color: #ffb3c0; border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
 .acceso-aviso { background: var(--surface-hover); color: var(--text); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 14px; text-align: center; }
 
-/* ---------- Pantallas de un mensaje: instrucción y fin provisional de la fase a ciegas ---------- */
+/* ---------- Pantallas de un mensaje: instrucción, revelación y fin provisional ---------- */
 .pantalla { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--bg); z-index: 20; }
 .pantalla-tarjeta {
   width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 18px;
@@ -310,6 +310,62 @@ button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .pantalla-boton:disabled { opacity: .5; cursor: default; }
 .pantalla-boton:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 @media (max-width: 600px) { .pantalla-tarjeta { padding: 28px 20px; } .pantalla-texto { font-size: 17px; } }
+
+/* ---------- Pasos 5, 6 y 8: cuadrícula de selección (cualquier cantidad de caras o miniaturas) ---------- */
+/* La pantalla se desplaza por su cuenta si la cuadrícula no cabe; margin: auto la centra cuando sí cabe. */
+.pantalla-seleccion { display: flex; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
+.seleccion-tarjeta {
+  margin: auto; width: 100%; max-width: 960px; display: flex; flex-direction: column; gap: 16px;
+  background: var(--surface); border-radius: var(--radius); padding: 28px clamp(16px, 4vw, 32px);
+}
+.seleccion-titulo { font-size: clamp(20px, 2.6vw, 26px); line-height: 1.3; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+.seleccion-titulo:focus { outline: none; }
+.seleccion-titulo:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; border-radius: 6px; }
+.seleccion-subtitulo { margin-top: -8px; font-size: 16px; line-height: 1.5; color: var(--text-dim); text-align: center; }
+.rejilla { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(132px, calc(50% - 6px)), 1fr)); }
+.pantalla-seleccion[data-forma="miniatura"] .rejilla { grid-template-columns: repeat(auto-fill, minmax(min(120px, calc(50% - 6px)), 1fr)); }
+
+.opcion {
+  position: relative; display: block; width: 100%; padding: 0; overflow: hidden;
+  border-radius: 12px; border: 3px solid transparent; background: var(--bg);
+  aspect-ratio: 1 / 1; transition: border-color .12s, transform .12s;
+}
+.pantalla-seleccion[data-forma="miniatura"] .opcion { aspect-ratio: 9 / 16; }
+.opcion img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; user-select: none; }
+.opcion:hover { border-color: var(--surface-hover); }
+.opcion[aria-pressed="true"] { border-color: var(--accent); }
+.opcion[aria-pressed="true"] img { opacity: .82; }
+.opcion:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+.opcion:disabled { cursor: default; }
+.opcion-marca {
+  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(15, 16, 19, .7); border: 2px solid #fff; color: transparent;
+}
+.opcion-marca svg { width: 18px; height: 18px; stroke-width: 3; }
+.opcion[aria-pressed="true"] .opcion-marca { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.opcion-ninguno {
+  display: flex; align-items: center; justify-content: center; gap: 10px; align-self: center;
+  min-height: 48px; min-width: min(240px, 100%); padding: 10px 20px; border-radius: 10px;
+  border: 2px solid var(--surface-hover); font-size: 16px; font-weight: 600;
+}
+.opcion-ninguno:hover { background: var(--surface-hover); }
+.opcion-ninguno[aria-pressed="true"] { border-color: var(--accent); background: rgba(255, 59, 92, .12); }
+.opcion-ninguno:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+.opcion-ninguno:disabled { cursor: default; }
+.opcion-ninguno-casilla {
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: 6px; border: 2px solid var(--text-dim);
+  display: grid; place-items: center; color: transparent;
+}
+.opcion-ninguno-casilla svg { width: 16px; height: 16px; stroke-width: 3; }
+.opcion-ninguno[aria-pressed="true"] .opcion-ninguno-casilla { background: var(--accent); border-color: var(--accent); color: #fff; }
+.seleccion-tarjeta .pantalla-boton { align-self: center; min-width: min(240px, 100%); }
+@media (max-width: 600px) {
+  .seleccion-tarjeta { padding: 22px 14px; }
+  .rejilla { gap: 10px; }
+  .seleccion-tarjeta .pantalla-boton, .opcion-ninguno { align-self: stretch; }
+}
+@media (prefers-reduced-motion: reduce) { .opcion { transition: none; } }
 
 /* ---------- Registro: aviso de privacidad y datos del participante ---------- */
 .registro {

@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="feed.css?v=20261121-4">
+<link rel="stylesheet" href="feed.css?v=20261121-5">
 </head>
 <body>
 
@@ -17,7 +17,7 @@
 
 <div class="nav" id="nav" aria-label="Navegar entre videos" hidden>
   <button type="button" id="nav-siguiente" aria-label="Video siguiente" disabled>
-    <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
   </button>
 </div>
 
@@ -114,11 +114,37 @@
   </div>
 </section>
 
-<!-- Pantalla provisional al terminar la fase a ciegas (se reemplaza en la siguiente entrega) -->
-<section class="pantalla" id="fin-ciega" aria-labelledby="fin-ciega-texto" hidden>
+<!-- Pasos 5, 6 y 8: cuadrícula de selección (caras o miniaturas) con "Ninguna/Ninguno" y "Aceptar" -->
+<section class="pantalla pantalla-seleccion" id="seleccion" aria-labelledby="seleccion-titulo" hidden>
+  <div class="seleccion-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <h1 class="seleccion-titulo" id="seleccion-titulo" tabindex="-1"></h1>
+    <p class="seleccion-subtitulo" id="seleccion-subtitulo"></p>
+    <div class="rejilla" id="seleccion-rejilla" role="group" aria-labelledby="seleccion-titulo"></div>
+    <button type="button" class="opcion-ninguno" id="seleccion-ninguno" aria-pressed="false">
+      <span class="opcion-ninguno-casilla" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      <span id="seleccion-ninguno-texto"></span>
+    </button>
+    <p class="pantalla-error" id="seleccion-error" role="alert" hidden></p>
+    <button type="button" class="pantalla-boton" id="seleccion-aceptar" aria-label="Aceptar" disabled>Aceptar</button>
+  </div>
+</section>
+
+<!-- Paso 7: revelación -->
+<section class="pantalla" id="revelacion" aria-labelledby="revelacion-texto" hidden>
   <div class="pantalla-tarjeta">
     <div class="logo pantalla-logo">corto<span>.</span></div>
-    <p class="pantalla-texto" id="fin-ciega-texto" tabindex="-1">Fin de la fase a ciegas.</p>
+    <p class="pantalla-texto" id="revelacion-texto" tabindex="-1">Algunos de los videos que viste fueron generados con inteligencia artificial. Un deepfake es un video o audio creado o alterado con IA para que parezca real.</p>
+    <p class="pantalla-error" id="revelacion-error" role="alert" hidden></p>
+    <button type="button" class="pantalla-boton" id="revelacion-aceptar" aria-label="De acuerdo" disabled>De acuerdo</button>
+  </div>
+</section>
+
+<!-- Pantalla provisional al terminar esta parte (se reemplaza en la siguiente entrega) -->
+<section class="pantalla" id="fin-parte" aria-labelledby="fin-parte-texto" hidden>
+  <div class="pantalla-tarjeta">
+    <div class="logo pantalla-logo">corto<span>.</span></div>
+    <p class="pantalla-texto" id="fin-parte-texto" tabindex="-1">Fin de esta parte.</p>
   </div>
 </section>
 
@@ -265,6 +291,6 @@
 
 <script src="../admin/config.js?v=20261120-1"></script>
 <script src="aviso-privacidad.js?v=20261121-1"></script>
-<script src="feed.js?v=20261121-4"></script>
+<script src="feed.js?v=20261121-5"></script>
 </body>
 </html>

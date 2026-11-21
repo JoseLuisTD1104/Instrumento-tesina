@@ -45,7 +45,8 @@ export class ClienteRest {
     return total;
   }
 
-  async insertar(tabla: string, fila: Fila): Promise<void> {
+  /** Inserta una fila o varias en una sola sentencia (todas o ninguna). */
+  async insertar(tabla: string, fila: Fila | Fila[]): Promise<void> {
     const r = await fetch(this.#rest(tabla, {}), {
       method: "POST", headers: { ...this.#cabeceras, Prefer: "return=minimal" }, body: JSON.stringify(fila),
     });
@@ -67,6 +68,7 @@ export class ClienteRest {
     const r = await fetch(this.#rest(tabla, filtros), {
       method: "DELETE", headers: { ...this.#cabeceras, Prefer: "return=minimal" },
     });
+    if (r.status === 409) throw new ErrorConflicto(`conflicto_borrado_${tabla}`);
     if (!r.ok) throw new ErrorControlado(`borrado_${tabla}_${r.status}`);
   }
 
@@ -88,6 +90,45 @@ export class ClienteRest {
     const firmado = (await r.json())?.signedURL;
     if (typeof firmado !== "string" || !firmado.startsWith("/")) throw new ErrorControlado("firma_respuesta");
     return `${this.#url}/storage/v1${firmado}`;
+  }
+
+  /** Varias URLs firmadas en una sola petición. Devuelve Map(ruta → URL completa); lanza si falta alguna. */
+  async firmarVarias(bucket: string, rutas: string[], segundos: number): Promise<Map<string, string>> {
+    const unicas = [...new Set(rutas)];
+    if (!unicas.length) return new Map();
+    const r = await fetch(`${this.#url}/storage/v1/object/sign/${bucket}`, {
+      method: "POST", headers: this.#cabeceras, body: JSON.stringify({ expiresIn: segundos, paths: unicas }),
+    });
+    if (!r.ok) throw new ErrorControlado(`firmas_${r.status}`);
+    const datos = await r.json();
+    if (!Array.isArray(datos)) throw new ErrorControlado("firmas_respuesta");
+    const urls = new Map<string, string>();
+    for (const d of datos) {
+      if (typeof d?.path === "string" && typeof d?.signedURL === "string" && d.signedURL.startsWith("/") && !d.error) {
+        urls.set(d.path, `${this.#url}/storage/v1${d.signedURL}`);
+      }
+    }
+    if (!unicas.every((ruta) => urls.has(ruta))) throw new ErrorControlado("firmas_incompletas");
+    return urls;
+  }
+
+  /** Sube un objeto nuevo a Storage (sin sobrescribir). */
+  async subirObjeto(bucket: string, ruta: string, bytes: Uint8Array, tipo: string): Promise<void> {
+    const r = await fetch(`${this.#url}/storage/v1/object/${bucket}/${ruta.split("/").map(encodeURIComponent).join("/")}`, {
+      method: "POST", headers: { ...this.#cabeceras, "Content-Type": tipo, "x-upsert": "false" }, body: bytes,
+    });
+    if (!r.ok) throw new ErrorControlado(`subida_${r.status}`);
+    await r.body?.cancel();
+  }
+
+  /** Borra objetos de Storage. Borrar uno que no existe no es error. */
+  async borrarObjetos(bucket: string, rutas: string[]): Promise<void> {
+    if (!rutas.length) return;
+    const r = await fetch(`${this.#url}/storage/v1/object/${bucket}`, {
+      method: "DELETE", headers: this.#cabeceras, body: JSON.stringify({ prefixes: rutas }),
+    });
+    if (!r.ok) throw new ErrorControlado(`borrado_objetos_${r.status}`);
+    await r.body?.cancel();
   }
 
   #rest(tabla: string, parametros: Record<string, string>): URL {

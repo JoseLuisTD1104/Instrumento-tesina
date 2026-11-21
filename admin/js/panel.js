@@ -5,6 +5,7 @@ class PanelPage {
   #auth;
   #guardia = null;
   #administrar = null;
+  #actores = null;
   #comentarios = null;
   #autenticacion = null;
 
@@ -24,11 +25,18 @@ class PanelPage {
     const repo = new VideoRepositorio(this.#auth.clienteSupabase(), window.CORTO_CONFIG, subidas);
     const dialogos = new Dialogos();
     const subir = new PestanaSubir(repo, dialogos);
-    this.#administrar = new PestanaAdministrar(repo, dialogos);
+    const reconocimiento = new ClienteReconocimiento(this.#auth.clienteSupabase());
+    const preparador = new PreparadorDeImagen();
+    const controles = new ControlesDeReconocimiento(reconocimiento, preparador);
+    this.#administrar = new PestanaAdministrar(repo, dialogos, controles);
+    this.#actores = new PestanaActores(reconocimiento, preparador, dialogos);
     subir.alSubir(() => this.#administrar.marcarDesactualizada());
+    controles.alCambiarAsignaciones(() => this.#actores.marcarDesactualizada());
+    this.#actores.alCambiarActores(() => this.#administrar.marcarDesactualizada());
     this.#comentarios = new PestanaComentarios(repo, new ComentarioRepositorio(this.#auth.clienteSupabase(), repo), dialogos);
     subir.iniciar();
     this.#administrar.iniciar();
+    this.#actores.iniciar();
     this.#comentarios.iniciar();
     const clienteCodigo = new ClienteCodigoActual(this.#auth.clienteSupabase());
     this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo(clienteCodigo), dialogos);
@@ -60,6 +68,7 @@ class PanelPage {
       });
       tab.focus();
       if (tab.id === "tab-administrar") this.#administrar.mostrar();
+      if (tab.id === "tab-actores") this.#actores.mostrar();
       if (tab.id === "tab-comentarios") this.#comentarios.mostrar();
       // Autenticación se proyecta sin que nadie toque el equipo: pausa la inactividad mientras se ve.
       if (tab.id === "tab-autenticacion") {

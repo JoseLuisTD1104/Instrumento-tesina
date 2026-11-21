@@ -13,7 +13,8 @@ export type Etapa = typeof ETAPAS[number];
 
 export const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type Progreso = { etapa: Etapa; orden: string[]; posicion: number };
+/** actualizadoEnMs: cuándo cambió por última vez (en la práctica, cuándo entró a la etapa actual). */
+export type Progreso = { etapa: Etapa; orden: string[]; posicion: number; actualizadoEnMs: number };
 
 /** Fisher-Yates con crypto.getRandomValues. Cada índice se elige por rechazo: sin sesgo de módulo. */
 export class MezcladorSinSesgo {
@@ -49,7 +50,7 @@ export class FaseCiega {
 
 export class RegistroDeProgreso {
   static MAX_VIDEOS = 50;
-  static COLUMNAS = "etapa,orden_ciego,posicion_ciega";
+  static COLUMNAS = "etapa,orden_ciego,posicion_ciega,actualizado_en";
 
   #servicio: ClienteRest;
 
@@ -57,9 +58,13 @@ export class RegistroDeProgreso {
     this.#servicio = servicio;
   }
 
-  /** Ids de los videos publicados, mezclados en el servidor. Lanza si no hay ninguno o pasan del máximo. */
-  async ordenAleatorio(): Promise<string[]> {
-    const filas = await this.#servicio.consultar("videos", { select: "id", publicado: "eq.true", order: "id.asc" });
+  /**
+   * Ids de los videos publicados, mezclados en el servidor. null si algún video publicado no tiene actor o
+   * miniatura (las etapas siguientes los necesitan). Lanza si no hay ninguno o pasan del máximo.
+   */
+  async ordenAleatorio(): Promise<string[] | null> {
+    const filas = await this.#servicio.consultar("videos", { select: "id,actor_id,miniatura_ruta", publicado: "eq.true", order: "id.asc" });
+    if (filas.some((f) => f.actor_id == null || f.miniatura_ruta == null)) return null;
     const ids = filas.map((f) => f.id);
     if (!ids.every((id): id is string => typeof id === "string" && PATRON_UUID.test(id))) throw new ErrorControlado("videos_ids_ilegibles");
     if (ids.length < 1 || ids.length > RegistroDeProgreso.MAX_VIDEOS) throw new ErrorControlado("videos_publicados_fuera_de_rango");
@@ -83,11 +88,15 @@ export class RegistroDeProgreso {
     return RegistroDeProgreso.#interpretar(filas[0]);
   }
 
-  /** Cambia la etapa solo si sigue siendo `desde` (actualización condicionada). true si cambió. */
-  async cambiarEtapa(codigo: string, desde: Etapa, hacia: Etapa, ahoraMs: number): Promise<boolean> {
+  /**
+   * Cambia la etapa solo si sigue siendo `desde` (actualización condicionada). true si cambió.
+   * `condiciones` agrega filtros de PostgREST y `extra`, columnas que se guardan en la misma actualización.
+   */
+  async cambiarEtapa(codigo: string, desde: Etapa, hacia: Etapa, ahoraMs: number,
+    { condiciones = {}, extra = {} }: { condiciones?: Record<string, string>; extra?: Record<string, unknown> } = {}): Promise<boolean> {
     const filas = await this.#servicio.actualizar(TABLA,
-      { codigo_participante: `eq.${codigo}`, etapa: `eq.${desde}`, select: "etapa" },
-      { etapa: hacia, actualizado_en: new Date(ahoraMs).toISOString() });
+      { ...condiciones, codigo_participante: `eq.${codigo}`, etapa: `eq.${desde}`, select: "etapa" },
+      { ...extra, etapa: hacia, actualizado_en: new Date(ahoraMs).toISOString() });
     return filas.length === 1;
   }
 
@@ -108,12 +117,14 @@ export class RegistroDeProgreso {
 
   static #interpretar(fila: Record<string, unknown>): Progreso {
     const { etapa, orden_ciego: orden, posicion_ciega: posicion } = fila;
+    const actualizadoEnMs = Date.parse(String(fila.actualizado_en ?? ""));
+    if (!Number.isFinite(actualizadoEnMs)) throw new ErrorControlado("progreso_fecha_ilegible");
     if (typeof etapa !== "string" || !(ETAPAS as readonly string[]).includes(etapa)) throw new ErrorControlado("progreso_etapa_ilegible");
     if (!Array.isArray(orden) || orden.length < 1 || orden.length > RegistroDeProgreso.MAX_VIDEOS ||
         !orden.every((id) => typeof id === "string" && PATRON_UUID.test(id))) throw new ErrorControlado("progreso_orden_ilegible");
     if (typeof posicion !== "number" || !Number.isInteger(posicion) || posicion < 0 || posicion > orden.length) {
       throw new ErrorControlado("progreso_posicion_ilegible");
     }
-    return { etapa: etapa as Etapa, orden: orden.map((id: string) => id.toLowerCase()), posicion };
+    return { etapa: etapa as Etapa, orden: orden.map((id: string) => id.toLowerCase()), posicion, actualizadoEnMs };
   }
 }

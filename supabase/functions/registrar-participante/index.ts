@@ -5,7 +5,8 @@
 // public.progreso_participante la etapa "instruccion" con el orden de la fase a ciegas, mezclado aquí
 // (Fisher-Yates con crypto.getRandomValues). Solo si todo eso tuvo éxito marca la sesión como registrada
 // (con su nombre, lo único que ve el panel); si algo falla, borra lo insertado y responde el rechazo
-// genérico. No devuelve ni registra ningún dato personal ni el código.
+// genérico. Si algún video publicado no tiene actor o miniatura, rechaza sin registrar nada.
+// No devuelve ni registra ningún dato personal ni el código.
 // Con { accion: "estado" } solo responde si el pase sigue valiendo (401 si no) y si ya se registró.
 import { Entorno, type LectorEntorno } from "../_shared/entorno.ts";
 import { CanalHttp } from "../_shared/http.ts";
@@ -57,10 +58,12 @@ export async function manejar(peticion: Request, leer: LectorEntorno): Promise<R
     if ("campos" in resultado) return canal.json(400, { error: "datos_invalidos", campos: resultado.campos });
     const { datos } = resultado;
 
-    // 3) Orden de la fase a ciegas (lanza si no hay videos publicados), antes de insertar nada.
+    // 3) Orden de la fase a ciegas (lanza si no hay videos publicados), antes de insertar nada. Si algún
+    //    video publicado no tiene actor o miniatura, rechazo genérico: no se registra a nadie incompleto.
     const ahora = Date.now();
     const progreso = new RegistroDeProgreso(servicio);
     const orden = await progreso.ordenAleatorio();
+    if (!orden) return canal.rechazo();
 
     // 4) Participante, perfil y progreso con el mismo código; solo si todo tuvo éxito, la sesión como
     //    registrada. Cada deshacer se apila antes de su inserción (borrar algo que no existe no daña).
