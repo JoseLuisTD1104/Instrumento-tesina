@@ -63,7 +63,9 @@ class PanelPage {
 
   // ---- Cambio de pestañas (incluye flechas del teclado) ----
   #activarPestanas() {
-    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    // Solo las pestañas principales: dentro de "Datos" hay otras listas de pestañas (subsecciones y vistas)
+    // que maneja PestanaDatos.
+    const tabs = [...document.querySelectorAll('.tabs > [role="tab"]')];
     const activar = (tab) => {
       tabs.forEach((t) => {
         const activa = t === tab;
