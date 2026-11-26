@@ -8,6 +8,7 @@ class PanelPage {
   #actores = null;
   #comentarios = null;
   #autenticacion = null;
+  #datos = null;
 
   constructor(auth) {
     this.#auth = auth;
@@ -39,6 +40,9 @@ class PanelPage {
     this.#administrar.iniciar();
     this.#actores.iniciar();
     this.#comentarios.iniciar();
+    const datos = document.getElementById("datos-interacciones");
+    this.#datos = new PestanaDatos({ interacciones: new SubseccionInteracciones(new ClienteDatos(this.#auth.clienteSupabase()), datos) });
+    this.#datos.iniciar();
     const clienteCodigo = new ClienteCodigoActual(this.#auth.clienteSupabase());
     this.#autenticacion = new PestanaAutenticacion(new ProveedorDeCodigo(clienteCodigo), dialogos);
     new VentanaSesionesActivas(new RepositorioDeSesiones(clienteCodigo)).iniciar(document.getElementById("auth-sesiones-activas"));
@@ -71,6 +75,7 @@ class PanelPage {
       if (tab.id === "tab-administrar") this.#administrar.mostrar();
       if (tab.id === "tab-actores") this.#actores.mostrar();
       if (tab.id === "tab-comentarios") this.#comentarios.mostrar();
+      if (tab.id === "tab-datos") this.#datos.mostrar();
       // Autenticación se proyecta sin que nadie toque el equipo: pausa la inactividad mientras se ve.
       if (tab.id === "tab-autenticacion") {
         this.#guardia.pausarInactividad();

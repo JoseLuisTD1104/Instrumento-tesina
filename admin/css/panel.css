@@ -530,3 +530,60 @@ dialog .acciones { margin-top: 16px; }
 .recorte-zoom output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
 .dialogo-recorte .acciones { flex-wrap: wrap; }
 .dialogo-recorte .acciones button { min-height: 44px; }
+
+/* ---------- Pestaña Datos ---------- */
+.panel-datos:not([hidden]) { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 24px; align-items: start; }
+.datos-subsecciones { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 16px; }
+.datos-subseccion {
+  text-align: left; padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; color: var(--text-dim);
+}
+.datos-subseccion:hover { background: var(--surface); color: var(--text); }
+.datos-subseccion[aria-selected="true"] { background: var(--surface-2); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
+.datos-contenido { min-width: 0; }
+.datos-vistas { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px; border-radius: 10px; background: var(--surface); }
+.datos-vista { padding: 8px 16px; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--text-dim); }
+.datos-vista:hover { color: var(--text); }
+.datos-vista[aria-selected="true"] { background: var(--surface-2); color: var(--text); }
+.datos-filtros { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 14px; }
+.datos-filtro { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+.datos-filtro select {
+  min-width: 150px; min-height: 36px; padding: 6px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; font-weight: 400;
+}
+.datos-filtros .btn-link { padding-bottom: 8px; }
+.datos-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.datos-tabla-marco { overflow: auto; max-height: 62vh; border-radius: var(--radius); background: var(--surface); }
+.datos-tabla { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.datos-tabla[aria-busy="true"] tbody { opacity: .5; }
+.datos-tabla th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); text-align: left; padding: 0; white-space: nowrap; }
+.datos-tabla td { padding: 8px 12px; border-top: 1px solid var(--border); white-space: nowrap; }
+.datos-tabla tbody tr:hover { background: var(--surface-2); }
+.datos-tabla [data-tipo="numero"] { text-align: right; }
+.orden-columna {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 12px;
+  font-size: 12px; font-weight: 600; color: var(--text-dim); letter-spacing: .3px;
+}
+.datos-tabla th[data-tipo="numero"] .orden-columna { justify-content: flex-end; }
+.orden-columna:hover, th[aria-sort="ascending"] .orden-columna, th[aria-sort="descending"] .orden-columna { color: var(--text); }
+.orden-flecha { font-size: 10px; opacity: .7; }
+.datos-descarga { position: relative; }
+.btn-icono {
+  width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px;
+  border: 1px solid var(--border); color: var(--text);
+}
+.btn-icono:hover:not(:disabled) { background: var(--surface-2); }
+.btn-icono:disabled { opacity: .4; cursor: default; }
+.btn-icono svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.menu-descarga {
+  position: absolute; right: 0; top: 42px; z-index: 5; min-width: 120px; display: flex; flex-direction: column; padding: 4px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+.menu-descarga[hidden] { display: none; }
+.menu-descarga button { text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
+.menu-descarga button:hover, .menu-descarga button:focus-visible { background: var(--surface); }
+.datos-paginacion { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.datos-resumen { margin-right: auto; font-size: 13px; color: var(--text-dim); }
+.datos-pagina { font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.datos-paginacion .btn-sec { padding: 6px 12px; font-size: 13px; }
+.datos-paginacion select { min-width: 0; }
+

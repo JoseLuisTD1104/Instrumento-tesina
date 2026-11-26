@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://dbvzgdcfzdmetscgsrpv.supabase.co; media-src https://dbvzgdcfzdmetscgsrpv.supabase.co; connect-src https://dbvzgdcfzdmetscgsrpv.supabase.co; font-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="css/panel.css?v=20261121-3">
+<link rel="stylesheet" href="css/panel.css?v=20261126-1">
 </head>
 <body class="verificando">
 
@@ -24,6 +24,7 @@
     <button class="tab" role="tab" id="tab-actores" aria-controls="panel-actores" aria-selected="false" tabindex="-1">Actores</button>
     <button class="tab" role="tab" id="tab-comentarios" aria-controls="panel-comentarios" aria-selected="false" tabindex="-1">Comentarios</button>
     <button class="tab" role="tab" id="tab-analiticas" aria-controls="panel-analiticas" aria-selected="false" tabindex="-1">Analíticas</button>
+    <button class="tab" role="tab" id="tab-datos" aria-controls="panel-datos" aria-selected="false" tabindex="-1">Datos</button>
     <button class="tab" role="tab" id="tab-autenticacion" aria-controls="panel-autenticacion" aria-selected="false" tabindex="-1">Autenticación</button>
   </div>
 
@@ -260,6 +261,57 @@
   </section>
 
   <section class="panel" id="panel-analiticas" role="tabpanel" aria-labelledby="tab-analiticas" tabindex="0" hidden></section>
+
+  <!-- ============ Datos ============ -->
+  <!-- Cada subsección: un botón data-subseccion-boton y su panel data-subseccion-datos (registrada en panel.js). -->
+  <section class="panel panel-datos" id="panel-datos" role="tabpanel" aria-labelledby="tab-datos" tabindex="0" hidden>
+    <nav class="datos-subsecciones" role="tablist" aria-label="Subsecciones de datos" aria-orientation="vertical">
+      <button class="datos-subseccion" type="button" role="tab" id="sub-interacciones" aria-controls="datos-interacciones"
+              aria-selected="true" data-subseccion-boton="interacciones">Interacciones</button>
+    </nav>
+
+    <section class="datos-contenido" id="datos-interacciones" role="tabpanel" aria-labelledby="sub-interacciones" data-subseccion-datos="interacciones">
+      <div class="encabezado">
+        <div>
+          <h2>Interacciones</h2>
+          <p class="archivo">Cómo interactuó cada participante con los videos del feed.</p>
+        </div>
+      </div>
+      <div class="datos-vistas" role="tablist" aria-label="Vista de interacciones">
+        <button class="datos-vista" type="button" role="tab" aria-selected="true" data-vista-datos="clics">Clics</button>
+        <button class="datos-vista" type="button" role="tab" aria-selected="false" tabindex="-1" data-vista-datos="visualizacion">Visualización</button>
+      </div>
+      <div class="datos-filtros">
+        <label class="datos-filtro"><span>Participante</span><select data-filtro-participante aria-label="Filtrar por participante"><option value="">Todos</option></select></label>
+        <label class="datos-filtro"><span>Video</span><select data-filtro-video aria-label="Filtrar por número de video"><option value="">Todos</option></select></label>
+        <label class="datos-filtro"><span data-etiqueta-extra>Tipo</span><select data-filtro-extra><option value="">Todos</option></select></label>
+        <button class="btn-link" type="button" data-limpiar-filtros>Quitar filtros</button>
+      </div>
+      <p class="mensaje" data-mensaje-datos role="status" hidden></p>
+      <div class="datos-cuerpo">
+        <div class="datos-tabla-marco">
+          <table class="datos-tabla" data-tabla-datos aria-label="Datos de interacciones"><thead></thead><tbody></tbody></table>
+        </div>
+        <div class="datos-descarga">
+          <button class="btn-icono" type="button" data-descargar aria-label="Descargar la vista con sus filtros" title="Descargar"
+                  aria-haspopup="menu" aria-expanded="false" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+          </button>
+          <div class="menu-descarga" role="menu" aria-label="Formato de descarga" data-menu-descarga hidden>
+            <button type="button" role="menuitem" data-formato="csv">CSV</button>
+            <button type="button" role="menuitem" data-formato="xlsx">Excel</button>
+          </div>
+        </div>
+      </div>
+      <div class="datos-paginacion">
+        <p class="datos-resumen" data-resumen role="status"></p>
+        <label class="datos-filtro"><span class="visually-hidden">Filas por página</span><select data-tamano aria-label="Filas por página"></select></label>
+        <button class="btn-sec" type="button" data-pagina-anterior aria-label="Página anterior" disabled>Anterior</button>
+        <span class="datos-pagina" data-pagina-texto></span>
+        <button class="btn-sec" type="button" data-pagina-siguiente aria-label="Página siguiente" disabled>Siguiente</button>
+      </div>
+    </section>
+  </section>
 
   <!-- ============ Autenticación ============ -->
   <section class="panel panel-autenticacion" id="panel-autenticacion" role="tabpanel" aria-labelledby="tab-autenticacion" tabindex="0" hidden>
@@ -593,6 +645,7 @@
 <script src="js/pestana-comentarios.js?v=20261120-2"></script>
 <script src="js/pestana-autenticacion.js?v=20261120-2"></script>
 <script src="js/sesiones-activas.js?v=20261120-2"></script>
-<script src="js/panel.js?v=20261121-2"></script>
+<script src="js/pestana-datos.js?v=20261126-1"></script>
+<script src="js/panel.js?v=20261126-1"></script>
 </body>
 </html>

@@ -45,6 +45,16 @@ export class ClienteRest {
     return total;
   }
 
+  /** Consulta con el total de filas que cumplen los filtros (Prefer: count=exact), para paginar. */
+  async consultarConTotal(tabla: string, parametros: Record<string, string>): Promise<{ filas: Fila[]; total: number }> {
+    const r = await fetch(this.#rest(tabla, parametros), { headers: { ...this.#cabeceras, Prefer: "count=exact" } });
+    if (!r.ok) throw new ErrorControlado(`consulta_${tabla}_${r.status}`);
+    const filas = await r.json();
+    const total = Number((r.headers.get("Content-Range") ?? "").split("/")[1]);
+    if (!Array.isArray(filas) || !Number.isInteger(total) || total < 0) throw new ErrorControlado(`respuesta_${tabla}`);
+    return { filas, total };
+  }
+
   /** Inserta una fila o varias en una sola sentencia (todas o ninguna). */
   async insertar(tabla: string, fila: Fila | Fila[]): Promise<void> {
     const r = await fetch(this.#rest(tabla, {}), {
